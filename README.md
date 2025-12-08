@@ -26,6 +26,7 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 | 📸 Screen Recording | ScreenCaptureKit (macOS 14+) |
 | 🔍 OCR Search | Apple Vision text recognition |
 | 🧠 Semantic Search | Find by meaning, not just keywords |
+| 🎨 App Learning | Auto color-codes apps in timeline |
 | 📹 H.264 Video | Hardware-accelerated encoding |
 | 💾 Full-Text Search | SQLite FTS5 |
 | ⚡ Lightweight | ~1% RAM, minimal CPU |

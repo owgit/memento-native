@@ -18,6 +18,13 @@ enum L {
     
     // MARK: - Controls
     static var fitToWindow: String { isSwedish ? "Anpassa till fönster" : "Fit to window" }
+    static var zoomIn: String { isSwedish ? "Zooma in" : "Zoom in" }
+    static var zoomOut: String { isSwedish ? "Zooma ut" : "Zoom out" }
+    static var resetZoom: String { isSwedish ? "Återställ zoom (100%)" : "Reset zoom (100%)" }
+    static var selectToCopy: String { isSwedish ? "Markera → Kopiera" : "Select → Copy" }
+    static var selectToCopyHelp: String { isSwedish ? "Markera text i bilden för att kopiera" : "Select text in the image to copy" }
+    static var zoomToSelect: String { isSwedish ? "Zooma för att markera" : "Zoom to select" }
+    static var zoomToSelectHelp: String { isSwedish ? "Zooma in till 100% för att markera text" : "Zoom in to 100% to select text" }
     
     // MARK: - Search
     static var text: String { "Text" }

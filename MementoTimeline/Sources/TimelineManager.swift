@@ -118,6 +118,14 @@ class TimelineManager: ObservableObject {
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
     
+    // Get color for app (from cache or generate)
+    static func colorForApp(_ appName: String) -> Color {
+        if let color = appColors[appName] {
+            return color
+        }
+        return generateColorForApp(appName)
+    }
+    
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         cachePath = home.appendingPathComponent(".cache/memento").path

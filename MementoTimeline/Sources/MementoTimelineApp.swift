@@ -8,9 +8,10 @@ struct MementoTimelineApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(timelineManager)
-                .frame(minWidth: 1200, minHeight: 800)
+                .frame(minWidth: 800, minHeight: 500)
         }
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1400, height: 900)
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Timeline") {

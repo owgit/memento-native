@@ -1,6 +1,61 @@
 import SwiftUI
 import VisionKit
 
+// MARK: - Time Formatting Helpers
+
+/// Format timestamp nicely: "14:30" for today, "igår 14:30", or "8 dec 14:30"
+func formatTimeDisplay(_ timestamp: String) -> String {
+    let clean = timestamp.replacingOccurrences(of: "\"", with: "")
+    let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
+    
+    // Get time part
+    var timeStr = ""
+    if parts.count >= 2 {
+        let timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
+        let timeComponents = timePart.split(separator: ":")
+        if timeComponents.count >= 2 {
+            timeStr = "\(timeComponents[0]):\(timeComponents[1])"
+        }
+    }
+    
+    // Get date part
+    guard let datePart = parts.first else { return timeStr }
+    let dateComponents = datePart.split(separator: "-")
+    guard dateComponents.count >= 3 else { return timeStr }
+    
+    let year = Int(dateComponents[0]) ?? 0
+    let month = Int(dateComponents[1]) ?? 0
+    let day = Int(dateComponents[2]) ?? 0
+    
+    // Check if today
+    let calendar = Calendar.current
+    let today = calendar.component(.day, from: Date())
+    let thisMonth = calendar.component(.month, from: Date())
+    let thisYear = calendar.component(.year, from: Date())
+    
+    if day == today && month == thisMonth && year == thisYear {
+        return timeStr  // Just show time for today
+    }
+    
+    // Yesterday check
+    if let yesterday = calendar.date(byAdding: .day, value: -1, to: Date()) {
+        let yDay = calendar.component(.day, from: yesterday)
+        let yMonth = calendar.component(.month, from: yesterday)
+        if day == yDay && month == yMonth && year == thisYear {
+            let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
+            return "\(isSwedish ? "igår" : "yesterday") \(timeStr)"
+        }
+    }
+    
+    // Show date + time
+    let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
+    let months = isSwedish 
+        ? ["", "jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
+        : ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    let monthName = month > 0 && month < months.count ? months[month] : ""
+    return "\(day) \(monthName) \(timeStr)"
+}
+
 struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
     @State private var showControls = true
@@ -11,6 +66,10 @@ struct ContentView: View {
     @State private var previewTime: String = ""
     @State private var zoomLevel: CGFloat = 1.0
     @State private var hasInitializedZoom = false
+    @State private var isFitToScreen = true  // Track fit-to-screen mode
+    
+    // Text selection - always enabled (Live Text handles it at any zoom)
+    private var canSelectText: Bool { true }
     
     var body: some View {
         ZStack {
@@ -121,15 +180,17 @@ struct ContentView: View {
     private var frameView: some View {
         GeometryReader { geometry in
             if let image = manager.currentFrame {
-                if zoomLevel <= 1.0 {
-                    // Fit-to-window mode - enkel SwiftUI Image
+                ZStack {
+                    // Blurred background fill (like iOS photo viewer)
                     Image(nsImage: image)
                         .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // Zoom mode - använd ScrollView för pan/zoom med Live Text
-                    LiveTextImageView(image: image, zoomLevel: $zoomLevel)
+                        .scaledToFill()
+                        .blur(radius: 30)
+                        .opacity(0.5)
+                        .clipped()
+                    
+                    // Main image with Live Text
+                    LiveTextImageView(image: image, zoomLevel: $zoomLevel, isFitToScreen: isFitToScreen)
                 }
             } else {
                 Color.black
@@ -250,25 +311,28 @@ struct ContentView: View {
                 .buttonStyle(ControlButtonStyle(size: 50))
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 
-                // Time display
-                VStack(spacing: 2) {
+                // Time display with app icon
+                HStack(spacing: 8) {
                     if let segment = manager.getSegmentForIndex(manager.currentFrameIndex) {
-                        Text(formatTime(segment.timeString))
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                        Text(segment.appName)
-                            .font(.system(size: 11))
-                            .foregroundColor(segment.color)
+                        // App icon
+                        AppIconView(appName: segment.appName)
+                            .frame(width: 32, height: 32)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(formatTimeDisplay(segment.timeString))
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                            Text(segment.appName)
+                                .font(.system(size: 11))
+                                .foregroundColor(segment.color)
+                        }
                     } else {
-                        Text("\(manager.currentFrameIndex + 1)")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("\(L.of) \(manager.totalFrames)")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.5))
+                        Text("\(manager.currentFrameIndex + 1) \(L.of) \(manager.totalFrames)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
                     }
                 }
-                .frame(width: 100)
+                .frame(minWidth: 140)
                 
                 // Next frame
                 Button(action: { manager.nextFrame() }) {
@@ -289,38 +353,87 @@ struct ContentView: View {
                     .frame(height: 30)
                     .background(Color.white.opacity(0.2))
                 
-                // Zoom controls
-                Button(action: { zoomLevel = max(0.5, zoomLevel - 0.25) }) {
-                    Image(systemName: "minus.magnifyingglass")
-                        .font(.system(size: 16))
+                // Zoom controls group
+                HStack(spacing: 8) {
+                    Button(action: { 
+                        isFitToScreen = false
+                        // Smart zoom steps: smaller when zoomed out
+                        let step: CGFloat = zoomLevel > 1.0 ? 0.25 : (zoomLevel > 0.5 ? 0.1 : 0.05)
+                        zoomLevel = max(0.1, zoomLevel - step)
+                    }) {
+                        Image(systemName: "minus")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(ControlButtonStyle(size: 32))
+                    .help(L.zoomOut)
+                    
+                    // Zoom level - clickable to set 100%
+                    Button(action: { 
+                        isFitToScreen = false
+                        zoomLevel = 1.0 
+                    }) {
+                        Text(isFitToScreen ? "Fit" : "\(Int(zoomLevel * 100))%")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundColor(isFitToScreen ? .white.opacity(0.5) : (zoomLevel == 1.0 ? .white : .cyan))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 50)
+                    .help(L.resetZoom)
+                    
+                    Button(action: { 
+                        isFitToScreen = false
+                        // Smart zoom steps: smaller when zoomed out
+                        let step: CGFloat = zoomLevel >= 1.0 ? 0.25 : (zoomLevel >= 0.5 ? 0.1 : 0.05)
+                        zoomLevel = min(5.0, zoomLevel + step)
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(ControlButtonStyle(size: 32))
+                    .help(L.zoomIn)
                 }
-                .buttonStyle(ControlButtonStyle())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.08))
+                )
                 
-                Text("\(Int(zoomLevel * 100))%")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 45)
-                
-                Button(action: { zoomLevel = min(5.0, zoomLevel + 0.25) }) {
-                    Image(systemName: "plus.magnifyingglass")
-                        .font(.system(size: 16))
+                // Fit to window - highlighted when active
+                Button(action: { 
+                    isFitToScreen = true
+                    fitToScreen() 
+                }) {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .font(.system(size: 14))
+                        .foregroundColor(isFitToScreen ? .cyan : .white)
                 }
-                .buttonStyle(ControlButtonStyle())
-                
-                // Reset zoom to 100%
-                Button(action: { zoomLevel = 1.0 }) {
-                    Image(systemName: "1.magnifyingglass")
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(ControlButtonStyle())
-                
-                // Fit to screen
-                Button(action: { fitToScreen() }) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(ControlButtonStyle())
+                .buttonStyle(ControlButtonStyle(size: 36, isActive: isFitToScreen))
                 .help(L.fitToWindow)
+                
+                Divider()
+                    .frame(height: 30)
+                    .background(Color.white.opacity(0.2))
+                
+                // Select-to-copy indicator - shows state
+                HStack(spacing: 6) {
+                    Image(systemName: canSelectText ? "text.cursor" : "text.cursor")
+                        .font(.system(size: 12))
+                    Text(canSelectText ? L.selectToCopy : L.zoomToSelect)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(canSelectText ? .green : .white.opacity(0.4))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(canSelectText ? Color.green.opacity(0.15) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(canSelectText ? Color.green.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                )
+                .help(canSelectText ? L.selectToCopyHelp : L.zoomToSelectHelp)
             }
         }
         .padding(.horizontal, 24)
@@ -750,6 +863,22 @@ struct ContentView: View {
             }
         case 49: // Space
             showControls.toggle()
+        case 24: // + (equals key)
+            if !isFitToScreen {
+                let step: CGFloat = zoomLevel >= 1.0 ? 0.25 : (zoomLevel >= 0.5 ? 0.1 : 0.05)
+                zoomLevel = min(5.0, zoomLevel + step)
+                showControlsTemporarily()
+            }
+        case 27: // - (minus key)
+            if !isFitToScreen {
+                let step: CGFloat = zoomLevel > 1.0 ? 0.25 : (zoomLevel > 0.5 ? 0.1 : 0.05)
+                zoomLevel = max(0.1, zoomLevel - step)
+                showControlsTemporarily()
+            }
+        case 29: // 0
+            isFitToScreen = false
+            zoomLevel = 1.0
+            showControlsTemporarily()
         default:
             break
         }
@@ -762,7 +891,7 @@ struct ContentView: View {
     }
     
     private func fitToScreen() {
-        // Reset to fit mode (zoomLevel <= 1.0 triggers SwiftUI scaledToFit)
+        // Just reset zoom - LiveTextImageView handles fitting
         zoomLevel = 1.0
     }
 }
@@ -770,14 +899,19 @@ struct ContentView: View {
 // MARK: - Control Button Style
 struct ControlButtonStyle: ButtonStyle {
     var size: CGFloat = 40
+    var isActive: Bool = false
     
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(.white.opacity(configuration.isPressed ? 0.5 : 0.9))
+            .foregroundColor(isActive ? .cyan : .white.opacity(configuration.isPressed ? 0.5 : 0.9))
             .frame(width: size, height: size)
             .background(
                 Circle()
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.05 : 0.1))
+                    .fill(isActive ? Color.cyan.opacity(0.2) : Color.white.opacity(configuration.isPressed ? 0.05 : 0.1))
+                    .overlay(
+                        Circle()
+                            .stroke(isActive ? Color.cyan.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                    )
             )
             .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
@@ -913,10 +1047,12 @@ struct SearchResultRow: View {
 struct LiveTextImageView: NSViewRepresentable {
     let image: NSImage
     @Binding var zoomLevel: CGFloat
+    let isFitToScreen: Bool
     
-    init(image: NSImage, zoomLevel: Binding<CGFloat> = .constant(1.0)) {
+    init(image: NSImage, zoomLevel: Binding<CGFloat>, isFitToScreen: Bool) {
         self.image = image
         self._zoomLevel = zoomLevel
+        self.isFitToScreen = isFitToScreen
     }
     
     @MainActor
@@ -931,14 +1067,16 @@ struct LiveTextImageView: NSViewRepresentable {
             if ImageAnalyzer.isSupported {
                 analyzer = ImageAnalyzer()
                 overlayView = ImageAnalysisOverlayView()
-                overlayView?.preferredInteractionTypes = .textSelection
-                overlayView?.selectableItemsHighlighted = true
+                overlayView?.preferredInteractionTypes = .automatic  // All interaction types
             }
         }
         
         func analyzeImage(_ image: NSImage, imageView: NSImageView) {
             guard let analyzer = analyzer,
                   let overlayView = overlayView else { return }
+            
+            // Always update trackingImageView 
+            overlayView.trackingImageView = imageView
             
             let newHash = image.hashValue
             guard currentImageHash != newHash else { return }
@@ -951,7 +1089,6 @@ struct LiveTextImageView: NSViewRepresentable {
                         let analysis = try await analyzer.analyze(cgImage, orientation: .up, configuration: configuration)
                         await MainActor.run {
                             overlayView.analysis = analysis
-                            overlayView.trackingImageView = imageView
                         }
                     } catch {
                         print("⚠️ Live Text analysis failed: \(error)")
@@ -966,114 +1103,109 @@ struct LiveTextImageView: NSViewRepresentable {
     }
     
     func makeNSView(context: Context) -> NSScrollView {
-        // Scroll view for zoom/pan
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.backgroundColor = .black
+        scrollView.backgroundColor = .clear
+        scrollView.drawsBackground = false
         scrollView.allowsMagnification = true
-        scrollView.minMagnification = 0.05  // Allow zooming out to fit large images
+        scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 5.0
         context.coordinator.scrollView = scrollView
         
-        // Clip view
         let clipView = NSClipView()
-        clipView.backgroundColor = .black
+        clipView.backgroundColor = .clear
+        clipView.drawsBackground = false
         scrollView.contentView = clipView
         
-        // Container for image + overlay
+        // Container at native image size
         let containerView = FlippedView()
         containerView.wantsLayer = true
         
-        // Image view at native size - magnification handles scaling
         let imageView = NSImageView()
         imageView.image = image
-        imageView.imageScaling = .scaleNone
-        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.imageScaling = isFitToScreen ? .scaleProportionallyUpOrDown : .scaleNone
+        imageView.frame = NSRect(origin: .zero, size: image.size)
         containerView.addSubview(imageView)
+        containerView.frame = NSRect(origin: .zero, size: image.size)
         
-        // Container = image native size, magnification will scale to fit
-        let imageSize = image.size
-        containerView.frame = NSRect(origin: .zero, size: imageSize)
-        
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            imageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
-        ])
-        
-        // Add Live Text overlay
+        // Live Text overlay
         if let overlayView = context.coordinator.overlayView {
-            overlayView.translatesAutoresizingMaskIntoConstraints = false
+            overlayView.frame = containerView.bounds
+            overlayView.autoresizingMask = [.width, .height]
             containerView.addSubview(overlayView)
-            
-            NSLayoutConstraint.activate([
-                overlayView.topAnchor.constraint(equalTo: containerView.topAnchor),
-                overlayView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-                overlayView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-                overlayView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
-            ])
-            
+            overlayView.trackingImageView = imageView
             context.coordinator.analyzeImage(image, imageView: imageView)
         }
         
         scrollView.documentView = containerView
         
-        // Fit image to window on initial load
+        // Set initial magnification low, then fit
+        scrollView.magnification = 0.1
+        
         DispatchQueue.main.async {
-            self.fitImageToWindow(scrollView: scrollView, imageSize: imageSize)
+            self.fitToWindow(scrollView)
         }
         
         return scrollView
     }
     
-    private func fitImageToWindow(scrollView: NSScrollView, imageSize: NSSize) {
-        let clipViewSize = scrollView.contentView.bounds.size
-        guard clipViewSize.width > 0, clipViewSize.height > 0 else { return }
+    private func fitToWindow(_ scrollView: NSScrollView) {
+        let clipSize = scrollView.contentView.bounds.size
+        let imageSize = image.size
+        guard clipSize.width > 10, clipSize.height > 10, imageSize.width > 10, imageSize.height > 10 else { 
+            return 
+        }
         
-        // Calculate zoom to fit
-        let widthRatio = clipViewSize.width / imageSize.width
-        let heightRatio = clipViewSize.height / imageSize.height
-        let fitZoom = min(widthRatio, heightRatio) * 0.95  // 95% to leave some margin
+        // Calculate scale to fit
+        let scaleW = clipSize.width / imageSize.width
+        let scaleH = clipSize.height / imageSize.height
+        let scale = min(scaleW, scaleH) * 0.95  // 95% to leave margin
         
-        scrollView.magnification = fitZoom
-        centerContent(in: scrollView)
+        scrollView.magnification = scale
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            self.centerContent(scrollView)
+        }
     }
     
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let containerView = scrollView.documentView,
               let imageView = containerView.subviews.first as? NSImageView else { return }
         
+        let size = image.size
         imageView.image = image
         
-        // Update container size for new image (1:1 with image pixels)
-        let imageSize = image.size
-        containerView.frame = NSRect(origin: .zero, size: imageSize)
+        // Update imageScaling based on mode
+        imageView.imageScaling = isFitToScreen ? .scaleProportionallyUpOrDown : .scaleNone
         
-        // Always update magnification to match zoomLevel
-        if abs(scrollView.magnification - zoomLevel) > 0.001 {
-            scrollView.animator().magnification = zoomLevel
-            print("🔍 Setting magnification to \(zoomLevel)")
+        // Set container to clip view size if fit-to-screen, else native image size
+        if isFitToScreen {
+            let clipSize = scrollView.contentView.bounds.size
+            containerView.frame = NSRect(origin: .zero, size: clipSize)
+            imageView.frame = containerView.bounds
+            scrollView.magnification = 1.0
+        } else {
+            containerView.frame = NSRect(origin: .zero, size: size)
+            imageView.frame = NSRect(origin: .zero, size: size)
+            scrollView.magnification = zoomLevel
+        }
+        
+        // Update overlay
+        if let overlayView = context.coordinator.overlayView {
+            overlayView.frame = imageView.bounds
         }
         
         context.coordinator.analyzeImage(image, imageView: imageView)
-        
-        // Re-center after zoom change
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            self.centerContent(in: scrollView)
-        }
     }
     
-    private func centerContent(in scrollView: NSScrollView) {
-        guard let documentView = scrollView.documentView else { return }
-        let documentSize = documentView.frame.size
-        let clipViewSize = scrollView.contentView.bounds.size
-        
-        let x = max(0, (documentSize.width - clipViewSize.width) / 2)
-        let y = max(0, (documentSize.height - clipViewSize.height) / 2)
-        
+    private func centerContent(_ scrollView: NSScrollView) {
+        guard let doc = scrollView.documentView else { return }
+        let docSize = doc.frame.size
+        let clipSize = scrollView.contentView.bounds.size
+        let x = max(0, (docSize.width * scrollView.magnification - clipSize.width) / 2)
+        let y = max(0, (docSize.height * scrollView.magnification - clipSize.height) / 2)
         scrollView.contentView.scroll(to: NSPoint(x: x, y: y))
     }
 }
@@ -1118,6 +1250,88 @@ struct TextBlockRow: View {
                 isHovered = hovering
             }
         }
+    }
+}
+
+// MARK: - App Icon View
+struct AppIconView: View {
+    let appName: String
+    @State private var appIcon: NSImage?
+    
+    // Known app bundle IDs
+    private static let bundleIds: [String: String] = [
+        "Safari": "com.apple.Safari",
+        "Google Chrome": "com.google.Chrome",
+        "Chrome": "com.google.Chrome",
+        "Firefox": "org.mozilla.firefox",
+        "Arc": "company.thebrowser.Browser",
+        "Cursor": "com.todesktop.230313mzl4w4u92",
+        "Visual Studio Code": "com.microsoft.VSCode",
+        "Code": "com.microsoft.VSCode",
+        "Terminal": "com.apple.Terminal",
+        "iTerm": "com.googlecode.iterm2",
+        "Finder": "com.apple.finder",
+        "Mail": "com.apple.mail",
+        "Messages": "com.apple.MobileSMS",
+        "Slack": "com.tinyspeck.slackmacgap",
+        "Discord": "com.hnc.Discord",
+        "Spotify": "com.spotify.client",
+        "Notes": "com.apple.Notes",
+        "Preview": "com.apple.Preview",
+        "Photos": "com.apple.Photos",
+        "Xcode": "com.apple.dt.Xcode",
+        "Figma": "com.figma.Desktop",
+        "Notion": "notion.id",
+        "Obsidian": "md.obsidian",
+        "Brave Browser": "com.brave.Browser",
+        "Microsoft Edge": "com.microsoft.edgemac"
+    ]
+    
+    var body: some View {
+        Group {
+            if let icon = appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                // Fallback: colored circle with first letter
+                ZStack {
+                    Circle()
+                        .fill(TimelineManager.colorForApp(appName))
+                    Text(String(appName.prefix(1)).uppercased())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .onAppear { loadIcon() }
+        .onChange(of: appName) { loadIcon() }
+    }
+    
+    private func loadIcon() {
+        // Try to get icon from bundle ID
+        if let bundleId = Self.bundleIds[appName],
+           let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            appIcon = NSWorkspace.shared.icon(forFile: appUrl.path)
+            return
+        }
+        
+        // Try to find app by name in /Applications
+        let appPaths = [
+            "/Applications/\(appName).app",
+            "/Applications/\(appName.replacingOccurrences(of: " ", with: "")).app",
+            "/System/Applications/\(appName).app"
+        ]
+        
+        for path in appPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                appIcon = NSWorkspace.shared.icon(forFile: path)
+                return
+            }
+        }
+        
+        // No icon found, use fallback
+        appIcon = nil
     }
 }
 
