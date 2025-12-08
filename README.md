@@ -31,15 +31,22 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 | ⚡ Lightweight | ~1% RAM, minimal CPU |
 | 🔒 Privacy-First | No cloud, no telemetry |
 
-## Quick Start
+## Installation
+
+### Option 1: DMG (Recommended)
+
+Download the latest DMG from [Releases](https://github.com/owgit/memento-native/releases), open it, and drag both apps to Applications.
+
+### Option 2: Build from source
 
 ```bash
 git clone https://github.com/owgit/memento-native.git
-cd memento-native/MementoCapture && ./bundle.sh
+cd memento-native
+./build-dmg.sh        # Creates dist/Memento-Native-1.0.0.dmg
+# Or build individually:
+cd MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh
 ```
-
-Both apps installed to `/Applications/`
 
 ## Setup Permissions
 

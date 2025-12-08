@@ -13,6 +13,10 @@ DerivedData/
 # App bundles
 *.app/
 
+# Build output
+dist/
+*.dmg
+
 # Logs
 *.log
 
