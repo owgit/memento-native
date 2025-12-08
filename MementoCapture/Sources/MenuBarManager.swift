@@ -79,6 +79,13 @@ class MenuBarManager {
         
         menu.addItem(NSMenuItem.separator())
         
+        // Buy me a coffee
+        let coffeeItem = NSMenuItem(title: "☕️ " + L.buyMeACoffee, action: #selector(openBuyMeACoffee), keyEquivalent: "")
+        coffeeItem.target = self
+        menu.addItem(coffeeItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
         // Quit
         let quitItem = NSMenuItem(title: L.quitMemento, action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
@@ -346,6 +353,12 @@ class MenuBarManager {
         if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
             let hasPermission = ScreenshotCapture.hasPermission()
             item.title = hasPermission ? L.permissionsOk : L.permissionsMissing
+        }
+    }
+    
+    @objc private func openBuyMeACoffee() {
+        if let url = URL(string: "https://buymeacoffee.com/uygarduzgun") {
+            NSWorkspace.shared.open(url)
         }
     }
     

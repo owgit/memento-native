@@ -151,6 +151,14 @@ MEMENTO NATIVE - Installation
 Requirements: macOS 14.0+
 
 More info: https://github.com/owgit/memento-native
+
+---
+
+☕️ Support the project
+If you find Memento useful, consider buying me a coffee!
+https://buymeacoffee.com/uygarduzgun
+
+Thank you for your support! 🙏
 EOF
 
 # Create DMG

@@ -153,10 +153,36 @@ struct SettingsView: View {
                 Label(L.system, systemImage: "gearshape")
                     .font(.headline)
             }
+            
+            Divider().padding(.vertical, 8)
+            
+            // Support Section
+            Section {
+                Button(action: {
+                    if let url = URL(string: "https://buymeacoffee.com/uygarduzgun") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "cup.and.saucer.fill")
+                            .foregroundColor(.orange)
+                        Text(L.buyMeACoffee)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            } header: {
+                Label(L.support, systemImage: "heart.fill")
+                    .font(.headline)
+            }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 450, height: 500)
+        .frame(width: 450, height: 550)
     }
     
     private func selectFolder() {
@@ -211,5 +237,6 @@ private extension L {
     static var currentUsage: String { isSwedish ? "Använt utrymme" : "Current usage" }
     static var system: String { isSwedish ? "System" : "System" }
     static var autoStart: String { isSwedish ? "Starta vid inloggning" : "Start at login" }
+    static var support: String { isSwedish ? "Stöd" : "Support" }
 }
 

@@ -89,5 +89,6 @@ enum L {
     static var screenRecordingRequired: String { isSwedish ? "Skärminspelning krävs" : "Screen Recording Required" }
     static var openSystemSettings: String { isSwedish ? "Öppna Systeminställningar" : "Open System Settings" }
     static var startMemento: String { isSwedish ? "Starta Memento" : "Start Memento" }
+    static var buyMeACoffee: String { isSwedish ? "Bjud på en kaffe" : "Buy me a coffee" }
 }
 
