@@ -18,6 +18,7 @@ enum L {
     static var cleanOldFrames: String { isSwedish ? "Rensa gamla frames..." : "Clean Old Frames..." }
     static var saveDebugScreenshot: String { isSwedish ? "Spara debug-skärmdump" : "Save Debug Screenshot" }
     static var quitMemento: String { isSwedish ? "Avsluta Memento" : "Quit Memento" }
+    static var settingsMenu: String { isSwedish ? "Inställningar..." : "Settings..." }
     
     // MARK: - Permissions
     static var permissionsOk: String { isSwedish ? "✓ Behörigheter OK" : "✓ Permissions OK" }

@@ -46,6 +46,11 @@ class MenuBarManager {
         timelineItem.target = self
         menu.addItem(timelineItem)
         
+        // Settings
+        let settingsItem = NSMenuItem(title: L.settingsMenu, action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Permission status
@@ -61,12 +66,6 @@ class MenuBarManager {
         menu.addItem(debugItem)
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Clipboard toggle with clear state
-        let clipboardItem = NSMenuItem(title: clipboardMenuTitle(), action: #selector(toggleClipboard), keyEquivalent: "")
-        clipboardItem.target = self
-        clipboardItem.tag = 103
-        menu.addItem(clipboardItem)
         
         // Stats
         let statsItem = NSMenuItem(title: L.statistics, action: #selector(showStats), keyEquivalent: "s")
@@ -129,6 +128,10 @@ class MenuBarManager {
             }
         }
         print("⚠️ Memento Timeline not found")
+    }
+    
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
     }
     
     @objc private func showStats() {
@@ -335,29 +338,7 @@ class MenuBarManager {
     }
     
     @objc private func checkPermission() {
-        let hasPermission = ScreenshotCapture.hasPermission()
-        
-        if hasPermission {
-            let alert = NSAlert()
-            alert.messageText = L.permissionsOkTitle
-            alert.informativeText = L.permissionsOkMessage
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: L.ok)
-            alert.runModal()
-        } else {
-            let alert = NSAlert()
-            alert.messageText = L.permissionsMissingTitle
-            alert.informativeText = L.permissionsMissingMessage
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: L.openSettings)
-            alert.addButton(withTitle: L.cancel)
-            
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                ScreenshotCapture.openPermissionSettings()
-            }
-        }
-        
+        PermissionGuideController.shared.show()
         updatePermissionMenuItem()
     }
     
@@ -365,23 +346,6 @@ class MenuBarManager {
         if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
             let hasPermission = ScreenshotCapture.hasPermission()
             item.title = hasPermission ? L.permissionsOk : L.permissionsMissing
-        }
-    }
-    
-    @objc private func toggleClipboard() {
-        ClipboardCapture.shared.enabled.toggle()
-        updateClipboardMenuItem()
-        print("📋 Clipboard capture: \(ClipboardCapture.shared.enabled ? "enabled" : "disabled")")
-    }
-    
-    private func clipboardMenuTitle() -> String {
-        let status = ClipboardCapture.shared.enabled ? "🟢 ON" : "⚫ OFF"
-        return "\(L.clipboardCapture): \(status)"
-    }
-    
-    private func updateClipboardMenuItem() {
-        if let menu = statusItem?.menu, let item = menu.item(withTag: 103) {
-            item.title = clipboardMenuTitle()
         }
     }
     

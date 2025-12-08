@@ -11,8 +11,8 @@ class CaptureService {
     static let shared = CaptureService()
     
     // Configuration
-    let captureInterval: TimeInterval = 2.0  // Capture every 2 seconds (0.5 FPS)
-    let framesPerVideo = 5  // 5 frames per video file (10 seconds)
+    var captureInterval: TimeInterval { Settings.shared.captureInterval }
+    let framesPerVideo = 5  // 5 frames per video file
     
     // State
     private var frameCount = 0
@@ -108,13 +108,12 @@ class CaptureService {
         }
         previousImage = screenshot
         
-        // Skip OCR for timeline app
-        let skipApps = ["Memento Timeline", "MementoTimeline"]
-        let isTimelineApp = skipApps.contains { activeApp.contains($0) }
+        // Skip OCR for excluded apps
+        let isExcluded = Settings.shared.isAppExcluded(activeApp)
         
         // Perform OCR
         var ocrResults: [TextBlock] = []
-        if shouldOCR && !isTimelineApp {
+        if shouldOCR && !isExcluded {
             ocrResults = await ocrEngine.recognizeText(in: screenshot)
         }
         

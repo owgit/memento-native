@@ -21,15 +21,10 @@ if [ -f "$BINARY_PATH" ]; then
     cp .build/release/memento-capture "$BINARY_PATH"
     # Re-sign after binary update
     codesign --force --deep --sign - "$APP_DIR" 2>/dev/null
-    # Reset Screen Recording permission for this app
-    tccutil reset ScreenCapture com.memento.capture 2>/dev/null || true
     echo "✅ Binary updated"
     echo ""
-    echo "⚠️  Du måste ge Screen Recording-behörighet igen:"
-    echo "   1. System Settings > Privacy & Security > Screen Recording"
-    echo "   2. Ta bort 'Memento Capture' om den finns"
-    echo "   3. Klicka + och lägg till: $APP_DIR"
-    echo "   4. Aktivera den"
+    echo "ℹ️  If screen capture stops working, use the in-app Permission Guide"
+    echo "   (Menu > Permissions... > follow instructions)"
     exit 0
 fi
 

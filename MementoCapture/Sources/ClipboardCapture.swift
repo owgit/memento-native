@@ -7,20 +7,12 @@ class ClipboardCapture {
     static let shared = ClipboardCapture()
     
     private var lastChangeCount: Int = 0
-    private var isEnabled: Bool = false
+    
+    /// Enable/disable clipboard capture (controlled by Settings)
+    var isEnabled: Bool = false
     
     private init() {
         lastChangeCount = NSPasteboard.general.changeCount
-        isEnabled = UserDefaults.standard.bool(forKey: "clipboardCaptureEnabled")
-    }
-    
-    /// Enable/disable clipboard capture
-    var enabled: Bool {
-        get { isEnabled }
-        set {
-            isEnabled = newValue
-            UserDefaults.standard.set(newValue, forKey: "clipboardCaptureEnabled")
-        }
     }
     
     /// Get clipboard content if it changed since last check
@@ -47,5 +39,3 @@ class ClipboardCapture {
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
-
-
