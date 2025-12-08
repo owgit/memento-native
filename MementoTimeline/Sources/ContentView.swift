@@ -872,7 +872,7 @@ struct SearchResultRow: View {
         let clean = timestamp.replacingOccurrences(of: "\"", with: "")
         let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
         guard parts.count >= 2 else { return "" }
-        var timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
+        let timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
         let timeComponents = timePart.split(separator: ":")
         guard timeComponents.count >= 2 else { return timePart }
         return "\(timeComponents[0]):\(timeComponents[1])"
@@ -889,7 +889,7 @@ struct SearchResultRow: View {
             "KBIS"
         ]
         
-        var lines = text.components(separatedBy: CharacterSet.newlines)
+        let lines = text.components(separatedBy: CharacterSet.newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { line in
                 let trimmed = line.trimmingCharacters(in: .whitespaces)

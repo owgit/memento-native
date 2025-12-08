@@ -20,3 +20,6 @@ dist/
 # Logs
 *.log
 
+# Cursor
+.cursorrules
+
