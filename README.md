@@ -1,15 +1,15 @@
 # Memento Native
 
-**Open-source macOS screen recorder with OCR search** — like Rewind.ai but 100% local & private.
+**Your Mac's photographic memory** — automatically records your screen and lets you search anything you've seen.
 
-> Native Swift implementation inspired by [apirrone/Memento](https://github.com/apirrone/Memento) (Python). Rewritten from scratch for macOS with ScreenCaptureKit, Vision OCR, and zero dependencies.
+Ever closed a tab and forgot the URL? Lost an important message? Can't remember where you saw that code snippet? Memento captures your screen continuously, extracts all text using OCR, and makes it searchable. Everything stays 100% local on your Mac.
 
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/uygarduzgun)
 
-Record your screen, search any text you've seen. All data stays on your Mac.
+> Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
 
 ## Use Cases
 
