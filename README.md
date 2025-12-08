@@ -1,65 +1,100 @@
 # Memento Native
 
-Native macOS screen capture & timeline viewer. 100% Swift, 100% local.
+**Open-source macOS screen recorder with OCR search** — like Rewind.ai but 100% local & private.
+
+[![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
+[![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+Record your screen, search any text you've seen. All data stays on your Mac.
+
+## Use Cases
+
+- 🔍 **Find by keyword** — Search "invoice", "meeting", "password"
+- 💬 **Recover lost text** — Find that message or email you closed
+- 🐛 **Debug timeline** — Scroll back to see what happened
+- 🧠 **Semantic search** — Find "coding tutorial" even if text says "programming lesson"
+- 📋 **Visual history** — Browse your screen activity by time
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| 📸 ScreenCaptureKit | Modern macOS 14+ capture API |
-| 🔍 Vision OCR | Apple's native text recognition |
-| 🧠 Semantic Search | NaturalLanguage embeddings |
-| 📹 H.264 Video | VideoToolbox hardware encoding |
-| 💾 SQLite + FTS5 | Full-text search |
-| ⚡ Low Resource | ~1% RAM, minimal CPU |
+| 📸 Screen Recording | ScreenCaptureKit (macOS 14+) |
+| 🔍 OCR Search | Apple Vision text recognition |
+| 🧠 Semantic Search | Find by meaning, not just keywords |
+| 📹 H.264 Video | Hardware-accelerated encoding |
+| 💾 Full-Text Search | SQLite FTS5 |
+| ⚡ Lightweight | ~1% RAM, minimal CPU |
+| 🔒 Privacy-First | No cloud, no telemetry |
 
-## Apps
-
-```
-MementoCapture/     Background service
-MementoTimeline/    Timeline viewer
-```
-
-## Build & Install
+## Quick Start
 
 ```bash
-cd MementoCapture && ./bundle.sh
+git clone https://github.com/owgit/memento-native.git
+cd memento-native/MementoCapture
+./bundle.sh
+open ~/Applications/Memento\ Capture.app
 ```
-
-Creates `~/Applications/Memento Capture.app`
 
 ## Requirements
 
-- macOS 14.0+
+- macOS 14.0 Sonoma or later
 - Screen Recording permission
 
-## Architecture
+## How It Works
 
 ```
 ┌─────────────────┐     ┌──────────────┐
 │ MementoCapture  │────▶│   SQLite     │◀────│ MementoTimeline │
 │                 │     │  + FTS5      │     │                 │
-│ • ScreenCaptureKit    │  + Vectors   │     │ • View frames   │
+│ • Screenshot    │     │  + Vectors   │     │ • View frames   │
 │ • Vision OCR    │     └──────────────┘     │ • Text search   │
 │ • H.264 encode  │            │             │ • Semantic search│
 │ • Embeddings    │            ▼             └─────────────────┘
 └─────────────────┘     ~/.cache/memento/
 ```
 
-## Data
+## Semantic Search
 
+Uses Apple NaturalLanguage for on-device embeddings:
+
+```swift
+// 512-dim sentence embedding → Int8 quantized (8x compression)
+NLEmbedding.sentenceEmbedding(for: .english)
 ```
-~/.cache/memento/
-├── memento.db      # SQLite (frames, OCR, embeddings)
-└── *.mp4           # H.264 videos
-```
+
+Data stored in `~/.cache/memento/`
 
 ## Privacy
 
-- 🔒 100% local - no cloud, no telemetry
-- All data in `~/.cache/memento/`
-- Delete anytime: `rm -rf ~/.cache/memento`
+- **100% offline** — works without internet
+- **No accounts** — no sign-up required  
+- **No telemetry** — zero data collection
+- **Local storage** — delete anytime with `rm -rf ~/.cache/memento`
+
+## Alternatives
+
+| App | Price | Privacy |
+|-----|-------|---------|
+| Rewind.ai | $19/mo | Cloud-based |
+| **Memento** | **Free** | **100% local** |
+
+## Roadmap
+
+### 🤖 AI-Powered Search (Coming)
+
+Local LLM integration for natural language queries:
+
+- "What was that article about React I read yesterday?"
+- "Find the Slack message from Johan about the API"
+- "Show me when I was working on the login bug"
+- "What did I copy to clipboard around 3pm?"
 
 ## License
 
-MIT
+MIT — use it however you want.
+
+---
+
+**Keywords:** screen recorder macos, ocr search mac, rewind alternative, local screen recording, privacy screen capture, searchable screenshots, macos productivity, swift screencapturekit
