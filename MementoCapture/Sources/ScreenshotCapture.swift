@@ -1,24 +1,95 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import ScreenCaptureKit
 
-/// Native macOS screenshot capture using CGWindowListCreateImage
+/// Modern macOS screenshot capture using ScreenCaptureKit (macOS 14+)
+@available(macOS 14.0, *)
 class ScreenshotCapture {
     
-    /// Capture the entire screen
-    func capture() -> CGImage? {
-        let image = CGWindowListCreateImage(
-            CGRect.infinite,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            .bestResolution
-        )
-        return image
+    private var hasWarnedAboutPermission = false
+    private var hasLoggedDisplayInfo = false
+    
+    /// Check if screen recording permission is granted
+    static func hasPermission() -> Bool {
+        return CGPreflightScreenCaptureAccess()
+    }
+    
+    /// Request screen recording permission
+    static func requestPermission() {
+        CGRequestScreenCaptureAccess()
+    }
+    
+    /// Open System Preferences to Screen Recording settings
+    static func openPermissionSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    /// Capture the entire screen using ScreenCaptureKit
+    func capture() async -> CGImage? {
+        do {
+            // This call will trigger permission dialog if not granted
+            // Get shareable content - include desktop windows and all windows
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            
+            // Debug: log available displays once
+            if !hasLoggedDisplayInfo {
+                print("📺 Available displays: \(content.displays.count)")
+                for (i, display) in content.displays.enumerated() {
+                    print("   Display \(i): \(display.width)x\(display.height), ID: \(display.displayID)")
+                }
+                print("🪟 Available windows: \(content.windows.count)")
+                print("📱 Available apps: \(content.applications.count)")
+                hasLoggedDisplayInfo = true
+            }
+            
+            // Find main display (use CGMainDisplayID for virtual screen compatibility)
+            let mainDisplayID = CGMainDisplayID()
+            let display = content.displays.first { $0.displayID == mainDisplayID } ?? content.displays.first
+            
+            guard let display = display else {
+                print("ERROR: No display found")
+                return nil
+            }
+            
+            // Get all on-screen windows to include in capture
+            let onScreenWindows = content.windows.filter { window in
+                window.isOnScreen && window.frame.width > 0 && window.frame.height > 0
+            }
+            
+            // Create filter - include ALL windows on the display
+            let filter = SCContentFilter(display: display, including: onScreenWindows)
+            
+            // Configure screenshot
+            let config = SCStreamConfiguration()
+            config.width = display.width * 2  // Retina
+            config.height = display.height * 2
+            config.pixelFormat = kCVPixelFormatType_32BGRA
+            config.showsCursor = false
+            config.captureResolution = .best
+            config.scalesToFit = false
+            
+            // Capture screenshot
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            return image
+            
+        } catch {
+            print("ERROR: Screenshot capture failed: \(error.localizedDescription)")
+            // Try to request permission
+            if !ScreenshotCapture.hasPermission() {
+                print("Requesting screen recording permission...")
+                ScreenshotCapture.requestPermission()
+                ScreenshotCapture.openPermissionSettings()
+            }
+            return nil
+        }
     }
     
     /// Capture at specific resolution
-    func capture(maxWidth: Int, maxHeight: Int) -> CGImage? {
-        guard let fullImage = capture() else { return nil }
+    func capture(maxWidth: Int, maxHeight: Int) async -> CGImage? {
+        guard let fullImage = await capture() else { return nil }
         
         // Check if resize needed
         if fullImage.width <= maxWidth && fullImage.height <= maxHeight {

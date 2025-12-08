@@ -48,6 +48,18 @@ class MenuBarManager {
         
         menu.addItem(NSMenuItem.separator())
         
+        // Permission status
+        let permissionItem = NSMenuItem(title: "Behörigheter...", action: #selector(checkPermission), keyEquivalent: "")
+        permissionItem.target = self
+        permissionItem.tag = 102
+        menu.addItem(permissionItem)
+        updatePermissionMenuItem()
+        
+        // Debug screenshot
+        let debugItem = NSMenuItem(title: "Spara debug-skärmdump", action: #selector(saveDebugScreenshot), keyEquivalent: "d")
+        debugItem.target = self
+        menu.addItem(debugItem)
+        
         // Stats
         let statsItem = NSMenuItem(title: "Statistik...", action: #selector(showStats), keyEquivalent: "s")
         statsItem.target = self
@@ -244,8 +256,76 @@ class MenuBarManager {
         resultAlert.runModal()
     }
     
+    @objc private func saveDebugScreenshot() {
+        Task {
+            let capture = ScreenshotCapture()
+            guard let image = await capture.capture() else {
+                let alert = NSAlert()
+                alert.messageText = "Fel"
+                alert.informativeText = "Kunde inte ta skärmdump. Kontrollera behörigheter."
+                alert.runModal()
+                return
+            }
+            
+            // Save to Desktop
+            let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+            let path = desktop.appendingPathComponent("memento-debug-\(Int(Date().timeIntervalSince1970)).png")
+            
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            if let data = bitmap.representation(using: .png, properties: [:]) {
+                try? data.write(to: path)
+                
+                let alert = NSAlert()
+                alert.messageText = "Debug-skärmdump sparad"
+                alert.informativeText = "Bild sparad på skrivbordet:\n\(path.lastPathComponent)\n\nStorlek: \(image.width)x\(image.height)"
+                alert.addButton(withTitle: "Öppna")
+                alert.addButton(withTitle: "OK")
+                
+                let response = alert.runModal()
+                if response == .alertFirstButtonReturn {
+                    NSWorkspace.shared.open(path)
+                }
+            }
+        }
+    }
+    
+    @objc private func checkPermission() {
+        let hasPermission = ScreenshotCapture.hasPermission()
+        
+        if hasPermission {
+            let alert = NSAlert()
+            alert.messageText = "Behörigheter OK"
+            alert.informativeText = "Screen Recording-behörighet är beviljad. Appen kan fånga hela skärmen."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Behörighet saknas"
+            alert.informativeText = "Screen Recording-behörighet krävs för att fånga hela skärmen med appar. Utan den fångas bara bakgrundsbilden.\n\nGå till: Systeminställningar > Integritet och säkerhet > Skärminspelning"
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Öppna Inställningar")
+            alert.addButton(withTitle: "Avbryt")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                ScreenshotCapture.openPermissionSettings()
+            }
+        }
+        
+        updatePermissionMenuItem()
+    }
+    
+    private func updatePermissionMenuItem() {
+        if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
+            let hasPermission = ScreenshotCapture.hasPermission()
+            item.title = hasPermission ? "✓ Behörigheter OK" : "⚠ Behörigheter saknas"
+        }
+    }
+    
     @objc private func quitApp() {
         captureService?.stop()
         NSApp.terminate(nil)
     }
 }
+

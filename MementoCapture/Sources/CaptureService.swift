@@ -5,6 +5,7 @@ import AVFoundation
 import CoreGraphics
 
 /// Main capture service - captures screenshots, performs OCR, stores results
+@available(macOS 14.0, *)
 @MainActor
 class CaptureService {
     static let shared = CaptureService()
@@ -81,8 +82,8 @@ class CaptureService {
         // Get active app
         let activeApp = getActiveApp()
         
-        // Capture screenshot
-        guard let screenshot = screenshotCapture.capture() else {
+        // Capture screenshot using ScreenCaptureKit
+        guard let screenshot = await screenshotCapture.capture() else {
             print("⚠️  Failed to capture screenshot")
             return
         }

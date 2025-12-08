@@ -559,7 +559,7 @@ struct ContentView: View {
                             ForEach(manager.searchResults) { result in
                                 SearchResultRow(result: result)
                                     .onTapGesture {
-                                        manager.jumpToFrame(result.frameId)
+                                        manager.jumpToFrameId(result.frameId)
                                         withAnimation {
                                             manager.isSearching = false
                                         }
@@ -791,54 +791,121 @@ struct SearchResultRow: View {
     
     var body: some View {
         HStack(spacing: 14) {
-            // Frame indicator
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 50, height: 36)
-                .overlay(
-                    Text("#\(result.frameId)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.6))
-                )
+            // Date/time badge
+            VStack(spacing: 2) {
+                Text(formatDate(result.timestamp))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(formatTime(result.timestamp))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .frame(width: 54)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(0.08))
+            )
             
             // Text content
             VStack(alignment: .leading, spacing: 4) {
-                Text(result.text)
-                    .font(.system(size: 14))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                
-                if !result.timestamp.isEmpty || !result.appName.isEmpty {
-                    HStack(spacing: 8) {
+                // Similarity score for semantic search
+                if result.score > 0 {
+                    HStack(spacing: 4) {
+                        Text("[\(Int(result.score * 100))%]")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.purple.opacity(0.8))
+                        
                         if !result.appName.isEmpty {
                             Text(result.appName)
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.4))
-                        }
-                        if !result.timestamp.isEmpty {
-                            Text(result.timestamp)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.3))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
                         }
                     }
+                } else if !result.appName.isEmpty {
+                    Text(result.appName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
                 }
+                
+                Text(cleanupText(result.text))
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(2)
             }
             
             Spacer()
             
             // Arrow
-            Image(systemName: "arrow.right")
+            Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(isHovered ? 0.6 : 0.2))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(isHovered ? Color.white.opacity(0.08) : Color.clear)
+        .padding(.vertical, 10)
+        .background(isHovered ? Color.white.opacity(0.06) : Color.clear)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
+    }
+    
+    // "8 dec" format - handles both "2025-12-07 20:42:17" and "2025-12-08T01:39:08Z"
+    private func formatDate(_ timestamp: String) -> String {
+        let clean = timestamp.replacingOccurrences(of: "\"", with: "")
+        // Split by T or space
+        let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
+        guard let datePart = parts.first else { return "?" }
+        let dateComponents = datePart.split(separator: "-")
+        guard dateComponents.count >= 3 else { return String(datePart) }
+        
+        let day = Int(dateComponents[2]) ?? 0
+        let monthNum = Int(dateComponents[1]) ?? 0
+        let months = ["", "jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
+        let month = monthNum > 0 && monthNum < months.count ? months[monthNum] : ""
+        return day > 0 ? "\(day) \(month)" : "?"
+    }
+    
+    // "14:30" format - handles both formats
+    private func formatTime(_ timestamp: String) -> String {
+        let clean = timestamp.replacingOccurrences(of: "\"", with: "")
+        let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
+        guard parts.count >= 2 else { return "" }
+        var timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
+        let timeComponents = timePart.split(separator: ":")
+        guard timeComponents.count >= 2 else { return timePart }
+        return "\(timeComponents[0]):\(timeComponents[1])"
+    }
+    
+    // Filter out boring menu bar text, keep interesting content
+    private func cleanupText(_ text: String) -> String {
+        // Common menu items to filter
+        let menuPatterns = [
+            "File Edit Selection View Run Terminal Window Help",
+            "Arkiv Redigera Innehall Fonster Hjalp",
+            "Arkiv Redigera Innehåll Fönster Hjälp",
+            "File Edit View Insert Format",
+            "KBIS"
+        ]
+        
+        var lines = text.components(separatedBy: CharacterSet.newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { return false }
+                // Skip lines that are mostly menu text
+                for pattern in menuPatterns {
+                    if trimmed.contains(pattern) { return false }
+                }
+                // Skip very short lines (likely UI noise)
+                if trimmed.count < 5 { return false }
+                return true
+            }
+        
+        // Return first meaningful lines
+        let result = lines.prefix(3).joined(separator: " · ")
+        return result.isEmpty ? text.prefix(80).description : result
     }
 }
 

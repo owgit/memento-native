@@ -119,3 +119,4 @@ class EmbeddingService {
         return data.withUnsafeBytes { Array($0.bindMemory(to: Int8.self)) }
     }
 }
+

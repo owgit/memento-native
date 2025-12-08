@@ -41,6 +41,7 @@ class TimelineManager: ObservableObject {
         let text: String
         let timestamp: String
         let appName: String
+        var score: Float = 0  // Similarity score for semantic search (0-1)
     }
     
     struct TimelineSegment: Identifiable {
@@ -169,6 +170,28 @@ class TimelineManager: ObservableObject {
         let frameInVideo = index % framesPerVideo
         // Video filename is the starting frame_id, so add offset
         return videoId + frameInVideo
+    }
+    
+    // Convert frame_id to display index (for search results)
+    func getIndexForFrameId(_ frameId: Int) -> Int? {
+        // Find which video contains this frame_id
+        for (videoIndex, videoId) in videoIds.enumerated() {
+            let videoEndId = videoId + framesPerVideo
+            if frameId >= videoId && frameId < videoEndId {
+                let frameInVideo = frameId - videoId
+                return videoIndex * framesPerVideo + frameInVideo
+            }
+        }
+        return nil
+    }
+    
+    // Jump directly to a frame_id (from search)
+    func jumpToFrameId(_ frameId: Int) {
+        if let index = getIndexForFrameId(frameId) {
+            jumpToFrame(index)
+        } else {
+            log("⚠️ Could not find display index for frame_id \(frameId)")
+        }
     }
     
     // Load timeline metadata from database - paginated for memory efficiency
@@ -537,20 +560,34 @@ class TimelineManager: ObservableObject {
         log("✅ Statement prepared")
         
         var rowCount = 0
+        var frameIds: [(Int, String)] = []
+        
         while sqlite3_step(statement) == SQLITE_ROW {
             rowCount += 1
             let frameId = Int(sqlite3_column_int(statement, 0))
-            
             guard let textPtr = sqlite3_column_text(statement, 1) else { continue }
             let text = String(cString: textPtr)
-            
-            // Simplified - no timestamp/app from JOIN for now
-            searchResults.append(SearchResult(
-                frameId: frameId,
-                text: String(text.prefix(100)), // Truncate long text
-                timestamp: "",
-                appName: ""
-            ))
+            frameIds.append((frameId, String(text.prefix(100))))
+        }
+        
+        // Fetch timestamps for each result
+        for (frameId, text) in frameIds {
+            let metaSql = "SELECT time, window_title FROM FRAME WHERE id = ?"
+            var metaStmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
+                sqlite3_bind_int(metaStmt, 1, Int32(frameId))
+                if sqlite3_step(metaStmt) == SQLITE_ROW {
+                    let timestamp = sqlite3_column_text(metaStmt, 0).map { String(cString: $0) } ?? ""
+                    let appName = sqlite3_column_text(metaStmt, 1).map { String(cString: $0) } ?? ""
+                    searchResults.append(SearchResult(
+                        frameId: frameId,
+                        text: text,
+                        timestamp: timestamp,
+                        appName: appName
+                    ))
+                }
+                sqlite3_finalize(metaStmt)
+            }
         }
         
         log("🔍 Found \(searchResults.count) results for '\(query)' (processed \(rowCount) rows)")
@@ -621,16 +658,31 @@ class TimelineManager: ObservableObject {
         // Sort by similarity (highest first)
         matches.sort { $0.similarity > $1.similarity }
         
-        // Convert to search results
-        searchResults = matches.prefix(50).map { match in
-            SearchResult(
-                frameId: match.frameId,
-                text: "[\(String(format: "%.0f%%", match.similarity * 100))] \(match.summary)",
-                timestamp: "",
-                appName: ""
-            )
+        // Get frame metadata for top matches
+        let topMatches = Array(matches.prefix(50))
+        var results: [SearchResult] = []
+        
+        for match in topMatches {
+            let metaSql = "SELECT time, window_title FROM FRAME WHERE id = ?"
+            var metaStmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
+                sqlite3_bind_int(metaStmt, 1, Int32(match.frameId))
+                if sqlite3_step(metaStmt) == SQLITE_ROW {
+                    let timestamp = sqlite3_column_text(metaStmt, 0).map { String(cString: $0) } ?? ""
+                    let appName = sqlite3_column_text(metaStmt, 1).map { String(cString: $0) } ?? ""
+                    results.append(SearchResult(
+                        frameId: match.frameId,
+                        text: match.summary,
+                        timestamp: timestamp,
+                        appName: appName,
+                        score: match.similarity
+                    ))
+                }
+                sqlite3_finalize(metaStmt)
+            }
         }
         
+        searchResults = results
         log("🧠 Found \(searchResults.count) semantic matches")
     }
 }
