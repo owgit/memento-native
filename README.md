@@ -44,14 +44,28 @@ Both apps installed to `/Applications/`
 ## Setup Permissions
 
 1. Open **System Settings** → **Privacy & Security** → **Screen Recording**
-2. Click **+** and add `~/Applications/Memento Capture.app`
+2. Click **+** and add `/Applications/Memento Capture.app`
 3. Enable it (toggle ON)
-4. Start the app: `open ~/Applications/Memento\ Capture.app`
+4. Start the app: `open /Applications/Memento\ Capture.app`
 
 ## Requirements
 
-- macOS 14.0 Sonoma or later
-- Screen Recording permission (for Memento Capture)
+| Requirement | Details |
+|-------------|---------|
+| **macOS** | 14.0 Sonoma or later |
+| **Mac** | Apple Silicon (M1/M2/M3) or Intel Mac |
+| **RAM** | 8GB minimum |
+| **Disk** | ~150MB/hour of recording |
+| **Permission** | Screen Recording |
+
+## Performance
+
+| Metric | Value |
+|--------|-------|
+| **CPU** | ~1-3% (idle between captures) |
+| **RAM** | ~50-100MB |
+| **Capture interval** | Every 2 seconds |
+| **Video codec** | H.264 hardware-accelerated |
 
 ## How It Works
 
