@@ -23,6 +23,7 @@ class CaptureService {
     private let ocrEngine = VisionOCR()
     private let videoEncoder: VideoEncoder
     private let database: Database
+    private let embeddingService = EmbeddingService()
     
     // Paths
     let cachePath: URL
@@ -119,6 +120,16 @@ class CaptureService {
             time: timestamp,
             textBlocks: ocrResults
         )
+        
+        // Generate embedding for semantic search (every frame with OCR)
+        if !ocrResults.isEmpty {
+            let allText = ocrResults.map { $0.text }.joined(separator: " ")
+            if let vector = embeddingService.embed(allText) {
+                let vectorData = embeddingService.vectorToData(vector)
+                let summary = String(allText.prefix(200))
+                database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary)
+            }
+        }
         
         // Add to video encoder
         videoEncoder.addFrame(screenshot, frameIndex: frameCount)

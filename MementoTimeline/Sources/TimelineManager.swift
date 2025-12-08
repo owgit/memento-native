@@ -554,5 +554,75 @@ class TimelineManager: ObservableObject {
         
         log("🔍 Found \(searchResults.count) results for '\(query)' (processed \(rowCount) rows)")
     }
+    
+    // MARK: - Semantic Search
+    
+    private let embeddingService = EmbeddingService()
+    
+    func semanticSearch(_ query: String) {
+        guard !query.isEmpty else {
+            searchResults = []
+            return
+        }
+        
+        log("🧠 Semantic search for: '\(query)'")
+        
+        // Generate query embedding
+        guard let queryVector = embeddingService.embed(query) else {
+            log("⚠️ Failed to embed query")
+            search(query)  // Fallback to text search
+            return
+        }
+        
+        // Load all embeddings from database
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+        
+        let sql = "SELECT frame_id, vector, text_summary FROM EMBEDDING"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        
+        var matches: [(frameId: Int, similarity: Float, summary: String)] = []
+        
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let frameId = Int(sqlite3_column_int(stmt, 0))
+            
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            let vectorData = Data(bytes: blobPtr, count: blobSize)
+            let storedVector = embeddingService.dataToVector(vectorData)
+            
+            let summary: String
+            if let textPtr = sqlite3_column_text(stmt, 2) {
+                summary = String(cString: textPtr)
+            } else {
+                summary = ""
+            }
+            
+            // Calculate similarity
+            let similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
+            
+            if similarity > 0.3 {  // Threshold
+                matches.append((frameId, similarity, summary))
+            }
+        }
+        
+        // Sort by similarity (highest first)
+        matches.sort { $0.similarity > $1.similarity }
+        
+        // Convert to search results
+        searchResults = matches.prefix(50).map { match in
+            SearchResult(
+                frameId: match.frameId,
+                text: "[\(String(format: "%.0f%%", match.similarity * 100))] \(match.summary)",
+                timestamp: "",
+                appName: ""
+            )
+        }
+        
+        log("🧠 Found \(searchResults.count) semantic matches")
+    }
 }
 

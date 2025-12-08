@@ -60,6 +60,16 @@ class Database {
             )
         """)
         
+        // Embeddings table for vector search
+        execute("""
+            CREATE TABLE IF NOT EXISTS EMBEDDING (
+                frame_id INTEGER PRIMARY KEY,
+                vector BLOB NOT NULL,
+                text_summary TEXT,
+                FOREIGN KEY (frame_id) REFERENCES FRAME(id)
+            )
+        """)
+        
         // Indexes
         execute("CREATE INDEX IF NOT EXISTS idx_content_frame_id ON CONTENT(frame_id)")
         execute("CREATE INDEX IF NOT EXISTS idx_frame_time ON FRAME(time)")
@@ -135,6 +145,82 @@ class Database {
         
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, query, -1, nil)
+            
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let frameId = Int(sqlite3_column_int(stmt, 0))
+                if let textPtr = sqlite3_column_text(stmt, 1) {
+                    let text = String(cString: textPtr)
+                    results.append((frameId, text))
+                }
+            }
+            sqlite3_finalize(stmt)
+        }
+        
+        return results
+    }
+    
+    // MARK: - Embedding Storage
+    
+    func insertEmbedding(frameId: Int, vector: Data, textSummary: String) {
+        let sql = "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, text_summary) VALUES (?, ?, ?)"
+        var stmt: OpaquePointer?
+        
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(frameId))
+            _ = vector.withUnsafeBytes { ptr in
+                sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(vector.count), SQLITE_TRANSIENT)
+            }
+            sqlite3_bind_text(stmt, 3, textSummary, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+    
+    func getAllEmbeddings() -> [(frameId: Int, vector: Data, summary: String)] {
+        let sql = "SELECT frame_id, vector, text_summary FROM EMBEDDING"
+        var stmt: OpaquePointer?
+        var results: [(Int, Data, String)] = []
+        
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let frameId = Int(sqlite3_column_int(stmt, 0))
+                
+                if let blobPtr = sqlite3_column_blob(stmt, 1) {
+                    let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+                    let vector = Data(bytes: blobPtr, count: blobSize)
+                    
+                    let summary: String
+                    if let textPtr = sqlite3_column_text(stmt, 2) {
+                        summary = String(cString: textPtr)
+                    } else {
+                        summary = ""
+                    }
+                    
+                    results.append((frameId, vector, summary))
+                }
+            }
+            sqlite3_finalize(stmt)
+        }
+        
+        return results
+    }
+    
+    func getFramesWithoutEmbedding(limit: Int = 100) -> [(frameId: Int, text: String)] {
+        let sql = """
+            SELECT f.id, GROUP_CONCAT(c.text, ' ') as all_text
+            FROM FRAME f
+            LEFT JOIN CONTENT c ON f.id = c.frame_id
+            WHERE f.id NOT IN (SELECT frame_id FROM EMBEDDING)
+            GROUP BY f.id
+            HAVING all_text IS NOT NULL
+            ORDER BY f.id DESC
+            LIMIT ?
+        """
+        var stmt: OpaquePointer?
+        var results: [(Int, String)] = []
+        
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(limit))
             
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(stmt, 0))
