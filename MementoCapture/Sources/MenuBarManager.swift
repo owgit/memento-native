@@ -108,8 +108,9 @@ class MenuBarManager {
     }
     
     @objc private func openTimeline() {
-        let timelineAppPath = "/Users/uygarduzgun/Sites/Memento/Memento Timeline Swift.app"
-        NSWorkspace.shared.open(URL(fileURLWithPath: timelineAppPath))
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let timelineAppPath = home.appendingPathComponent("Applications/Memento Timeline.app")
+        NSWorkspace.shared.open(timelineAppPath)
     }
     
     @objc private func showStats() {

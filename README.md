@@ -35,21 +35,10 @@ Record your screen, search any text you've seen. All data stays on your Mac.
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native/MementoCapture && ./bundle.sh
-cd ../MementoTimeline && swift build -c release
+cd ../MementoTimeline && ./bundle.sh
 ```
 
-## Install
-
-Both apps must be in `~/Applications/` for permissions to work:
-
-```bash
-# Memento Capture (already there after bundle.sh)
-ls ~/Applications/Memento\ Capture.app
-
-# Memento Timeline
-mkdir -p ~/Applications/Memento\ Timeline.app/Contents/MacOS
-cp MementoTimeline/.build/release/MementoTimeline ~/Applications/Memento\ Timeline.app/Contents/MacOS/
-```
+Both apps installed to `~/Applications/`
 
 ## Setup Permissions
 
