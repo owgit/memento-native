@@ -6,7 +6,7 @@ Native macOS screen capture & timeline viewer. 100% Swift, 100% local.
 
 | Feature | Description |
 |---------|-------------|
-| 📸 Screenshot | Capture every 2 seconds |
+| 📸 ScreenCaptureKit | Modern macOS 14+ capture API |
 | 🔍 Vision OCR | Apple's native text recognition |
 | 🧠 Semantic Search | NaturalLanguage embeddings |
 | 📹 H.264 Video | VideoToolbox hardware encoding |
@@ -20,24 +20,18 @@ MementoCapture/     Background service
 MementoTimeline/    Timeline viewer
 ```
 
-## Build
+## Build & Install
 
 ```bash
-cd MementoCapture && swift build -c release
-cd MementoTimeline && swift build -c release
+cd MementoCapture && ./bundle.sh
 ```
 
-## Install
+Creates `~/Applications/Memento Capture.app`
 
-```bash
-# Create app bundle
-mkdir -p "Memento Capture.app/Contents/MacOS"
-cp MementoCapture/.build/release/memento-capture "Memento Capture.app/Contents/MacOS/"
+## Requirements
 
-# Auto-start (optional)
-cp com.memento.capture.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.memento.capture.plist
-```
+- macOS 14.0+
+- Screen Recording permission
 
 ## Architecture
 
@@ -45,40 +39,20 @@ launchctl load ~/Library/LaunchAgents/com.memento.capture.plist
 ┌─────────────────┐     ┌──────────────┐
 │ MementoCapture  │────▶│   SQLite     │◀────│ MementoTimeline │
 │                 │     │  + FTS5      │     │                 │
-│ • Screenshot    │     │  + Vectors   │     │ • View frames   │
+│ • ScreenCaptureKit    │  + Vectors   │     │ • View frames   │
 │ • Vision OCR    │     └──────────────┘     │ • Text search   │
 │ • H.264 encode  │            │             │ • Semantic search│
 │ • Embeddings    │            ▼             └─────────────────┘
 └─────────────────┘     ~/.cache/memento/
 ```
 
-## Semantic Search
-
-Uses Apple NaturalLanguage for on-device embeddings:
-
-```swift
-// 512-dim sentence embedding → Int8 quantized (8x compression)
-NLEmbedding.sentenceEmbedding(for: .english)
-```
-
-| Storage | Size/frame |
-|---------|-----------|
-| Float32 | 2048 bytes |
-| **Int8** | **512 bytes** |
-
 ## Data
 
 ```
 ~/.cache/memento/
 ├── memento.db      # SQLite (frames, OCR, embeddings)
-├── *.mp4           # H.264 videos
-└── *.log           # Logs
+└── *.mp4           # H.264 videos
 ```
-
-## Requirements
-
-- macOS 13.0+
-- Screen Recording permission
 
 ## Privacy
 
@@ -89,4 +63,3 @@ NLEmbedding.sentenceEmbedding(for: .english)
 ## License
 
 MIT
-
