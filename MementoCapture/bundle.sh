@@ -6,17 +6,30 @@ set -e
 APP_NAME="Memento Capture"
 BUNDLE_ID="com.memento.capture"
 APP_DIR="$HOME/Applications/${APP_NAME}.app"
+BINARY_PATH="$APP_DIR/Contents/MacOS/memento-capture"
 
 echo "🔨 Building release..."
 swift build -c release
 
+# Check if app exists and binary is same (no need to re-bundle)
+if [ -f "$BINARY_PATH" ]; then
+    if cmp -s .build/release/memento-capture "$BINARY_PATH"; then
+        echo "✅ App already up to date, no changes needed"
+        exit 0
+    fi
+    echo "📦 Updating binary..."
+    cp .build/release/memento-capture "$BINARY_PATH"
+    echo "✅ Binary updated (signature preserved)"
+    exit 0
+fi
+
+# First time - create full bundle
 echo "📦 Creating app bundle..."
-rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 # Copy executable
-cp .build/release/memento-capture "$APP_DIR/Contents/MacOS/"
+cp .build/release/memento-capture "$BINARY_PATH"
 
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << EOF
@@ -45,7 +58,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Memento behöver skärminspelning för att fånga och söka i din skärmhistorik.</string>
+    <string>Memento needs screen recording to capture and search your screen history.</string>
 </dict>
 </plist>
 EOF
@@ -57,10 +70,8 @@ codesign --force --deep --sign - "$APP_DIR"
 echo ""
 echo "✅ App bundle created: $APP_DIR"
 echo ""
-echo "📋 Nästa steg:"
-echo "   1. Öppna Systeminställningar > Integritet och säkerhet > Skärminspelning"
-echo "   2. Ta bort gamla memento-capture poster"
-echo "   3. Öppna appen: open '$APP_DIR'"
-echo "   4. Ge behörighet när dialogen visas"
-echo "   5. Starta om appen"
-
+echo "📋 First time setup:"
+echo "   1. Open System Settings > Privacy & Security > Screen Recording"
+echo "   2. Click + and add: $APP_DIR"
+echo "   3. Enable it"
+echo "   4. Restart the app"
