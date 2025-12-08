@@ -18,6 +18,7 @@ class TimelineManager: ObservableObject {
     @Published var copiedNotification: Bool = false
     @Published var timelineSegments: [TimelineSegment] = []
     @Published var groupedByDay: [String: [TimelineSegment]] = [:]
+    @Published var useSemanticSearch: Bool = false
     
     struct TextBlock: Identifiable {
         let id = UUID()

@@ -454,22 +454,70 @@ struct ContentView: View {
             
             // Search panel
             VStack(spacing: 0) {
+                // Search mode toggle
+                HStack(spacing: 8) {
+                    Button(action: { manager.useSemanticSearch = false }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "text.magnifyingglass")
+                            Text("Text")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(manager.useSemanticSearch ? .white.opacity(0.5) : .white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(manager.useSemanticSearch ? Color.white.opacity(0.1) : Color.blue.opacity(0.8))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: { manager.useSemanticSearch = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "brain")
+                            Text("Semantisk")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(manager.useSemanticSearch ? .white : .white.opacity(0.5))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(manager.useSemanticSearch ? Color.purple.opacity(0.8) : Color.white.opacity(0.1))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                
                 // Search input
                 HStack(spacing: 14) {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: manager.useSemanticSearch ? "brain" : "magnifyingglass")
                         .font(.system(size: 20))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(manager.useSemanticSearch ? .purple.opacity(0.6) : .white.opacity(0.4))
                     
-                    TextField("Sök i din tidslinje...", text: $manager.searchQuery)
+                    TextField(manager.useSemanticSearch ? "Beskriv vad du letar efter..." : "Sök i din tidslinje...", text: $manager.searchQuery)
                         .textFieldStyle(.plain)
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white)
                         .onSubmit {
-                            manager.search(manager.searchQuery)
+                            if manager.useSemanticSearch {
+                                manager.semanticSearch(manager.searchQuery)
+                            } else {
+                                manager.search(manager.searchQuery)
+                            }
                         }
                         .onChange(of: manager.searchQuery) { _, newValue in
                             if newValue.count >= 2 {
-                                manager.search(newValue)
+                                if manager.useSemanticSearch {
+                                    manager.semanticSearch(newValue)
+                                } else {
+                                    manager.search(newValue)
+                                }
                             }
                         }
                     
