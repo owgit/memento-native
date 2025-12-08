@@ -38,7 +38,7 @@ cd memento-native/MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh
 ```
 
-Both apps installed to `~/Applications/`
+Both apps installed to `/Applications/`
 
 ## Setup Permissions
 
