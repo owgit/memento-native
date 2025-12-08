@@ -31,6 +31,10 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy executable
 cp .build/release/memento-capture "$BINARY_PATH"
 
+# Copy icon
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -51,6 +55,8 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <string>1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
