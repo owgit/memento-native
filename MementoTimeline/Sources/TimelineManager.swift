@@ -544,14 +544,15 @@ class TimelineManager: ObservableObject {
         defer { sqlite3_close(db) }
         log("✅ Database opened successfully")
         
-        // Search in OCR text
-        let escapedQuery = query.replacingOccurrences(of: "'", with: "''")
-        let contentSql = "SELECT frame_id, text FROM CONTENT WHERE text LIKE '%\(escapedQuery)%' COLLATE NOCASE ORDER BY frame_id DESC LIMIT 50"
+        // Search in OCR text - using parameterized query to prevent SQL injection
+        let likePattern = "%\(query)%"
+        let contentSql = "SELECT frame_id, text FROM CONTENT WHERE text LIKE ? COLLATE NOCASE ORDER BY frame_id DESC LIMIT 50"
         
         var statement: OpaquePointer?
         var frameIds: [(Int, String)] = []
         
         if sqlite3_prepare_v2(db, contentSql, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, likePattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             while sqlite3_step(statement) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(statement, 0))
                 if let textPtr = sqlite3_column_text(statement, 1) {
@@ -562,18 +563,22 @@ class TimelineManager: ObservableObject {
             sqlite3_finalize(statement)
         }
         
-        // Also search in FRAME metadata (url, tab_title, clipboard)
+        // Also search in FRAME metadata (url, tab_title, clipboard) - parameterized
         let frameSql = """
             SELECT id, COALESCE(url, '') || ' ' || COALESCE(tab_title, '') || ' ' || COALESCE(clipboard, '') as meta
             FROM FRAME 
-            WHERE url LIKE '%\(escapedQuery)%' COLLATE NOCASE
-               OR tab_title LIKE '%\(escapedQuery)%' COLLATE NOCASE
-               OR clipboard LIKE '%\(escapedQuery)%' COLLATE NOCASE
-               OR window_title LIKE '%\(escapedQuery)%' COLLATE NOCASE
+            WHERE url LIKE ? COLLATE NOCASE
+               OR tab_title LIKE ? COLLATE NOCASE
+               OR clipboard LIKE ? COLLATE NOCASE
+               OR window_title LIKE ? COLLATE NOCASE
             ORDER BY id DESC LIMIT 50
         """
         
         if sqlite3_prepare_v2(db, frameSql, -1, &statement, nil) == SQLITE_OK {
+            // Bind pattern to all 4 LIKE clauses
+            for i in 1...4 {
+                sqlite3_bind_text(statement, Int32(i), likePattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            }
             while sqlite3_step(statement) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(statement, 0))
                 if let textPtr = sqlite3_column_text(statement, 1) {
