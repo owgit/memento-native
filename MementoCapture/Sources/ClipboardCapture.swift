@@ -1,0 +1,51 @@
+import Foundation
+import AppKit
+
+/// Captures clipboard content (can be disabled in settings)
+class ClipboardCapture {
+    
+    static let shared = ClipboardCapture()
+    
+    private var lastChangeCount: Int = 0
+    private var isEnabled: Bool = false
+    
+    private init() {
+        lastChangeCount = NSPasteboard.general.changeCount
+        isEnabled = UserDefaults.standard.bool(forKey: "clipboardCaptureEnabled")
+    }
+    
+    /// Enable/disable clipboard capture
+    var enabled: Bool {
+        get { isEnabled }
+        set {
+            isEnabled = newValue
+            UserDefaults.standard.set(newValue, forKey: "clipboardCaptureEnabled")
+        }
+    }
+    
+    /// Get clipboard content if it changed since last check
+    /// Returns nil if disabled or unchanged
+    func getNewClipboardContent() -> String? {
+        guard isEnabled else { return nil }
+        
+        let currentCount = NSPasteboard.general.changeCount
+        guard currentCount != lastChangeCount else { return nil }
+        
+        lastChangeCount = currentCount
+        
+        // Only capture text content
+        guard let content = NSPasteboard.general.string(forType: .string) else { return nil }
+        
+        // Skip if too long (probably not useful text)
+        guard content.count < 10000 else { return nil }
+        
+        // Skip if it looks like a file path or binary data
+        if content.hasPrefix("/") && content.contains(".") && !content.contains(" ") {
+            return nil
+        }
+        
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+

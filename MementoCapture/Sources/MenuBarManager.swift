@@ -60,6 +60,14 @@ class MenuBarManager {
         debugItem.target = self
         menu.addItem(debugItem)
         
+        menu.addItem(NSMenuItem.separator())
+        
+        // Clipboard toggle with clear state
+        let clipboardItem = NSMenuItem(title: clipboardMenuTitle(), action: #selector(toggleClipboard), keyEquivalent: "")
+        clipboardItem.target = self
+        clipboardItem.tag = 103
+        menu.addItem(clipboardItem)
+        
         // Stats
         let statsItem = NSMenuItem(title: L.statistics, action: #selector(showStats), keyEquivalent: "s")
         statsItem.target = self
@@ -212,7 +220,7 @@ class MenuBarManager {
             cutoffString = ISO8601DateFormatter().string(from: Date().addingTimeInterval(86400)) // Tomorrow = delete all
             print("🗑️ Deleting ALL frames")
         } else {
-            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
             cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
             print("🗑️ Cleaning frames older than: \(cutoffString)")
         }
@@ -243,17 +251,17 @@ class MenuBarManager {
                 sqlite3_exec(db, "DELETE FROM CONTENT", nil, nil, nil)
                 sqlite3_exec(db, "DELETE FROM FRAME", nil, nil, nil)
             } else {
-                let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
-                if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
-                    sqlite3_bind_text(stmt, 1, cutoffString, -1, nil)
-                    while sqlite3_step(stmt) == SQLITE_ROW {
-                        frameIds.append(Int(sqlite3_column_int(stmt, 0)))
-                    }
-                    sqlite3_finalize(stmt)
+            let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
+            if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_text(stmt, 1, cutoffString, -1, nil)
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    frameIds.append(Int(sqlite3_column_int(stmt, 0)))
                 }
-                sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-                sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-                sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
+                sqlite3_finalize(stmt)
+            }
+            sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
+            sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
+            sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
             }
             
             deletedFrames = frameIds.count
@@ -273,11 +281,11 @@ class MenuBarManager {
                 let videoFrameIds = Set(frameIds.filter { $0 % framesPerVideo == 0 })
                 for videoId in videoFrameIds {
                     let videoPath = cachePath.appendingPathComponent("\(videoId).mp4")
-                    if FileManager.default.fileExists(atPath: videoPath.path) {
-                        try? FileManager.default.removeItem(at: videoPath)
-                        deletedVideos += 1
-                    }
+                if FileManager.default.fileExists(atPath: videoPath.path) {
+                    try? FileManager.default.removeItem(at: videoPath)
+                    deletedVideos += 1
                 }
+            }
             }
             
             print("🗑️ Cleanup: \(deletedFrames) frames, \(deletedVideos) videos deleted")
@@ -357,6 +365,23 @@ class MenuBarManager {
         if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
             let hasPermission = ScreenshotCapture.hasPermission()
             item.title = hasPermission ? L.permissionsOk : L.permissionsMissing
+        }
+    }
+    
+    @objc private func toggleClipboard() {
+        ClipboardCapture.shared.enabled.toggle()
+        updateClipboardMenuItem()
+        print("📋 Clipboard capture: \(ClipboardCapture.shared.enabled ? "enabled" : "disabled")")
+    }
+    
+    private func clipboardMenuTitle() -> String {
+        let status = ClipboardCapture.shared.enabled ? "🟢 ON" : "⚫ OFF"
+        return "\(L.clipboardCapture): \(status)"
+    }
+    
+    private func updateClipboardMenuItem() {
+        if let menu = statusItem?.menu, let item = menu.item(withTag: 103) {
+            item.title = clipboardMenuTitle()
         }
     }
     

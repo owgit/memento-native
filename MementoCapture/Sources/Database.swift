@@ -35,9 +35,19 @@ class Database {
             CREATE TABLE IF NOT EXISTS FRAME (
                 id INTEGER PRIMARY KEY,
                 window_title TEXT NOT NULL,
-                time TEXT NOT NULL
+                time TEXT NOT NULL,
+                url TEXT,
+                tab_title TEXT,
+                app_bundle_id TEXT,
+                clipboard TEXT
             )
         """)
+        
+        // Add new columns if they don't exist (migration)
+        execute("ALTER TABLE FRAME ADD COLUMN url TEXT")
+        execute("ALTER TABLE FRAME ADD COLUMN tab_title TEXT")
+        execute("ALTER TABLE FRAME ADD COLUMN app_bundle_id TEXT")
+        execute("ALTER TABLE FRAME ADD COLUMN clipboard TEXT")
         
         // Content table
         execute("""
@@ -88,15 +98,47 @@ class Database {
     
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
-    func insertFrame(frameId: Int, windowTitle: String, time: String, textBlocks: [TextBlock]) {
-        // Insert frame
-        let frameSQL = "INSERT OR REPLACE INTO FRAME (id, window_title, time) VALUES (?, ?, ?)"
+    func insertFrame(
+        frameId: Int,
+        windowTitle: String,
+        time: String,
+        textBlocks: [TextBlock],
+        url: String? = nil,
+        tabTitle: String? = nil,
+        appBundleId: String? = nil,
+        clipboard: String? = nil
+    ) {
+        // Insert frame with extended metadata
+        let frameSQL = """
+            INSERT OR REPLACE INTO FRAME (id, window_title, time, url, tab_title, app_bundle_id, clipboard)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
         var stmt: OpaquePointer?
         
         if sqlite3_prepare_v2(db, frameSQL, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_int(stmt, 1, Int32(frameId))
             sqlite3_bind_text(stmt, 2, windowTitle, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 3, time, -1, SQLITE_TRANSIENT)
+            if let url = url {
+                sqlite3_bind_text(stmt, 4, url, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 4)
+            }
+            if let tabTitle = tabTitle {
+                sqlite3_bind_text(stmt, 5, tabTitle, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 5)
+            }
+            if let appBundleId = appBundleId {
+                sqlite3_bind_text(stmt, 6, appBundleId, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 6)
+            }
+            if let clipboard = clipboard {
+                sqlite3_bind_text(stmt, 7, clipboard, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 7)
+            }
             sqlite3_step(stmt)
             sqlite3_finalize(stmt)
         }

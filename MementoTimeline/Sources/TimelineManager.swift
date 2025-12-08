@@ -544,31 +544,50 @@ class TimelineManager: ObservableObject {
         defer { sqlite3_close(db) }
         log("✅ Database opened successfully")
         
-        // Direct query with embedded search term (debug)
+        // Search in OCR text
         let escapedQuery = query.replacingOccurrences(of: "'", with: "''")
-        let sql = "SELECT frame_id, text FROM CONTENT WHERE text LIKE '%\(escapedQuery)%' COLLATE NOCASE ORDER BY frame_id DESC LIMIT 100"
-        log("📝 SQL: \(sql)")
+        let contentSql = "SELECT frame_id, text FROM CONTENT WHERE text LIKE '%\(escapedQuery)%' COLLATE NOCASE ORDER BY frame_id DESC LIMIT 50"
         
         var statement: OpaquePointer?
-        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
-        guard prepareResult == SQLITE_OK else {
-            let errorMsg = String(cString: sqlite3_errmsg(db))
-            log("❌ Failed to prepare statement: \(errorMsg)")
-            return
-        }
-        defer { sqlite3_finalize(statement) }
-        log("✅ Statement prepared")
-        
-        var rowCount = 0
         var frameIds: [(Int, String)] = []
         
-        while sqlite3_step(statement) == SQLITE_ROW {
-            rowCount += 1
-            let frameId = Int(sqlite3_column_int(statement, 0))
-            guard let textPtr = sqlite3_column_text(statement, 1) else { continue }
-            let text = String(cString: textPtr)
-            frameIds.append((frameId, String(text.prefix(100))))
+        if sqlite3_prepare_v2(db, contentSql, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let frameId = Int(sqlite3_column_int(statement, 0))
+                if let textPtr = sqlite3_column_text(statement, 1) {
+                    let text = String(cString: textPtr)
+                    frameIds.append((frameId, String(text.prefix(100))))
+                }
+            }
+            sqlite3_finalize(statement)
         }
+        
+        // Also search in FRAME metadata (url, tab_title, clipboard)
+        let frameSql = """
+            SELECT id, COALESCE(url, '') || ' ' || COALESCE(tab_title, '') || ' ' || COALESCE(clipboard, '') as meta
+            FROM FRAME 
+            WHERE url LIKE '%\(escapedQuery)%' COLLATE NOCASE
+               OR tab_title LIKE '%\(escapedQuery)%' COLLATE NOCASE
+               OR clipboard LIKE '%\(escapedQuery)%' COLLATE NOCASE
+               OR window_title LIKE '%\(escapedQuery)%' COLLATE NOCASE
+            ORDER BY id DESC LIMIT 50
+        """
+        
+        if sqlite3_prepare_v2(db, frameSql, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let frameId = Int(sqlite3_column_int(statement, 0))
+                if let textPtr = sqlite3_column_text(statement, 1) {
+                    let text = String(cString: textPtr)
+                    // Avoid duplicates
+                    if !frameIds.contains(where: { $0.0 == frameId }) {
+                        frameIds.append((frameId, String(text.prefix(100))))
+                    }
+                }
+            }
+            sqlite3_finalize(statement)
+        }
+        
+        log("🔍 Found \(frameIds.count) matching frames")
         
         // Fetch timestamps for each result
         for (frameId, text) in frameIds {
@@ -590,7 +609,7 @@ class TimelineManager: ObservableObject {
             }
         }
         
-        log("🔍 Found \(searchResults.count) results for '\(query)' (processed \(rowCount) rows)")
+        log("🔍 Found \(frameIds.count) matching frames for '\(query)'")
     }
     
     // MARK: - Semantic Search

@@ -50,6 +50,7 @@ enum L {
     static var olderThan7Days: String { isSwedish ? "Äldre än 7 dagar" : "Older than 7 days" }
     static var olderThan30Days: String { isSwedish ? "Äldre än 30 dagar" : "Older than 30 days" }
     static var deleteAll: String { isSwedish ? "Radera ALLT" : "Delete ALL" }
+    static var clipboardCapture: String { isSwedish ? "Fånga urklipp" : "Capture Clipboard" }
     static var cleanDone: String { isSwedish ? "Rensning klar" : "Cleanup Complete" }
     static func cleanResult(_ frames: Int, _ videos: Int) -> String {
         isSwedish 

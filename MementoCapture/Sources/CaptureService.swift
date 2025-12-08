@@ -79,8 +79,15 @@ class CaptureService {
     private func captureFrame() async {
         let startTime = Date()
         
-        // Get active app
+        // Get active app info
         let activeApp = getActiveApp()
+        let appBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        
+        // Get browser URL and tab title
+        let browserInfo = BrowserCapture.getCurrentBrowserInfo()
+        
+        // Get clipboard content (if enabled)
+        let clipboardContent = ClipboardCapture.shared.getNewClipboardContent()
         
         // Capture screenshot using ScreenCaptureKit
         guard let screenshot = await screenshotCapture.capture() else {
@@ -114,24 +121,34 @@ class CaptureService {
         // Get timestamp
         let timestamp = ISO8601DateFormatter().string(from: Date())
         
-        // Store in database
+        // Store in database with extended metadata
         database.insertFrame(
             frameId: frameCount,
             windowTitle: activeApp,
             time: timestamp,
-            textBlocks: ocrResults
+            textBlocks: ocrResults,
+            url: browserInfo?.url,
+            tabTitle: browserInfo?.title,
+            appBundleId: appBundleId,
+            clipboard: clipboardContent
         )
         
         // Generate quantized embedding for semantic search (8x smaller storage)
-        if !ocrResults.isEmpty {
-            let allText = ocrResults.map { $0.text }.joined(separator: " ")
-            if let vector = embeddingService.embed(allText) {
-                // Quantize to int8 (512 bytes instead of 2048)
-                let quantized = embeddingService.quantize(vector)
-                let vectorData = embeddingService.quantizedToData(quantized)
-                let summary = String(allText.prefix(200))
-                database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary, quantized: true)
-            }
+        // Include OCR + URL + tab title + clipboard for better semantic search
+        var embeddingParts: [String] = []
+        
+        if let url = browserInfo?.url, !url.isEmpty { embeddingParts.append(url) }
+        if let title = browserInfo?.title, !title.isEmpty { embeddingParts.append(title) }
+        if !activeApp.isEmpty { embeddingParts.append(activeApp) }
+        if let clip = clipboardContent, !clip.isEmpty { embeddingParts.append(clip) }
+        embeddingParts.append(contentsOf: ocrResults.map { $0.text })
+        
+        let allText = embeddingParts.joined(separator: " ")
+        if !allText.isEmpty, let vector = embeddingService.embed(allText) {
+            let quantized = embeddingService.quantize(vector)
+            let vectorData = embeddingService.quantizedToData(quantized)
+            let summary = String(allText.prefix(200))
+            database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary, quantized: true)
         }
         
         // Add to video encoder

@@ -96,7 +96,7 @@ Data stored in `~/.cache/memento/`
 - **100% offline** — works without internet
 - **No accounts** — no sign-up required  
 - **No telemetry** — zero data collection
-- **No clipboard** — clipboard content is never captured
+- **Clipboard opt-in** — clipboard monitoring disabled by default, toggle in menu
 - **Local storage** — delete anytime with `rm -rf ~/.cache/memento`
 
 ## Alternatives

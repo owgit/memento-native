@@ -28,10 +28,19 @@ class ScreenshotCapture {
     }
     
     /// Capture the entire screen using ScreenCaptureKit
+    /// Returns nil silently if permission not granted (no dialog triggered)
     func capture() async -> CGImage? {
+        // Check permission FIRST - don't trigger dialog automatically
+        if !ScreenshotCapture.hasPermission() {
+            if !hasWarnedAboutPermission {
+                print("⚠️ Screen Recording permission not granted - capture disabled")
+                print("   Grant permission in: System Settings > Privacy & Security > Screen Recording")
+                hasWarnedAboutPermission = true
+            }
+            return nil
+        }
+        
         do {
-            // This call will trigger permission dialog if not granted
-            // Get shareable content - include desktop windows and all windows
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             
             // Debug: log available displays once
@@ -45,7 +54,7 @@ class ScreenshotCapture {
                 hasLoggedDisplayInfo = true
             }
             
-            // Find main display (use CGMainDisplayID for virtual screen compatibility)
+            // Find main display
             let mainDisplayID = CGMainDisplayID()
             let display = content.displays.first { $0.displayID == mainDisplayID } ?? content.displays.first
             
@@ -54,35 +63,29 @@ class ScreenshotCapture {
                 return nil
             }
             
-            // Get all on-screen windows to include in capture
+            // Get all on-screen windows
             let onScreenWindows = content.windows.filter { window in
                 window.isOnScreen && window.frame.width > 0 && window.frame.height > 0
             }
             
-            // Create filter - include ALL windows on the display
+            // Create filter
             let filter = SCContentFilter(display: display, including: onScreenWindows)
             
             // Configure screenshot
             let config = SCStreamConfiguration()
-            config.width = display.width * 2  // Retina
+            config.width = display.width * 2
             config.height = display.height * 2
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.showsCursor = false
             config.captureResolution = .best
             config.scalesToFit = false
             
-            // Capture screenshot
+            // Capture
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            return image
+        return image
             
         } catch {
             print("ERROR: Screenshot capture failed: \(error.localizedDescription)")
-            // Try to request permission
-            if !ScreenshotCapture.hasPermission() {
-                print("Requesting screen recording permission...")
-                ScreenshotCapture.requestPermission()
-                ScreenshotCapture.openPermissionSettings()
-            }
             return nil
         }
     }
