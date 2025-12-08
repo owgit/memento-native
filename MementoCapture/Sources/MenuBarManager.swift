@@ -194,6 +194,7 @@ class MenuBarManager {
         
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
         let cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
+        print("🗑️ Cleaning frames older than: \(cutoffString)")
         
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
@@ -221,13 +222,20 @@ class MenuBarManager {
             
             deletedFrames = frameIds.count
             
-            for frameId in frameIds {
-                let videoPath = cachePath.appendingPathComponent("\(frameId).mp4")
+            // Videos are named by starting frame_id (0.mp4, 5.mp4, 10.mp4...)
+            // framesPerVideo = 5, so only delete videos where frameId % 5 == 0
+            let framesPerVideo = 5
+            let videoFrameIds = Set(frameIds.filter { $0 % framesPerVideo == 0 })
+            
+            for videoId in videoFrameIds {
+                let videoPath = cachePath.appendingPathComponent("\(videoId).mp4")
                 if FileManager.default.fileExists(atPath: videoPath.path) {
                     try? FileManager.default.removeItem(at: videoPath)
                     deletedVideos += 1
                 }
             }
+            
+            print("🗑️ Cleanup: \(deletedFrames) frames, \(deletedVideos) videos deleted")
             
             sqlite3_exec(db, "VACUUM", nil, nil, nil)
             sqlite3_close(db)
