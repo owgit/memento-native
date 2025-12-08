@@ -29,51 +29,51 @@ class MenuBarManager {
         let menu = NSMenu()
         
         // Status
-        let statusMenuItem = NSMenuItem(title: "● Spelar in", action: nil, keyEquivalent: "")
+        let statusMenuItem = NSMenuItem(title: L.recording, action: nil, keyEquivalent: "")
         statusMenuItem.tag = 100
         menu.addItem(statusMenuItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // Toggle capture
-        let toggleItem = NSMenuItem(title: "Pausa inspelning", action: #selector(toggleCapture), keyEquivalent: "p")
+        let toggleItem = NSMenuItem(title: L.pauseRecording, action: #selector(toggleCapture), keyEquivalent: "p")
         toggleItem.target = self
         toggleItem.tag = 101
         menu.addItem(toggleItem)
         
         // Open Timeline
-        let timelineItem = NSMenuItem(title: "Öppna Timeline", action: #selector(openTimeline), keyEquivalent: "t")
+        let timelineItem = NSMenuItem(title: L.openTimeline, action: #selector(openTimeline), keyEquivalent: "t")
         timelineItem.target = self
         menu.addItem(timelineItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // Permission status
-        let permissionItem = NSMenuItem(title: "Behörigheter...", action: #selector(checkPermission), keyEquivalent: "")
+        let permissionItem = NSMenuItem(title: L.permissions, action: #selector(checkPermission), keyEquivalent: "")
         permissionItem.target = self
         permissionItem.tag = 102
         menu.addItem(permissionItem)
         updatePermissionMenuItem()
         
         // Debug screenshot
-        let debugItem = NSMenuItem(title: "Spara debug-skärmdump", action: #selector(saveDebugScreenshot), keyEquivalent: "d")
+        let debugItem = NSMenuItem(title: L.saveDebugScreenshot, action: #selector(saveDebugScreenshot), keyEquivalent: "d")
         debugItem.target = self
         menu.addItem(debugItem)
         
         // Stats
-        let statsItem = NSMenuItem(title: "Statistik...", action: #selector(showStats), keyEquivalent: "s")
+        let statsItem = NSMenuItem(title: L.statistics, action: #selector(showStats), keyEquivalent: "s")
         statsItem.target = self
         menu.addItem(statsItem)
         
         // Clean up
-        let cleanItem = NSMenuItem(title: "Rensa gamla frames...", action: #selector(cleanOldFrames), keyEquivalent: "")
+        let cleanItem = NSMenuItem(title: L.cleanOldFrames, action: #selector(cleanOldFrames), keyEquivalent: "")
         cleanItem.target = self
         menu.addItem(cleanItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // Quit
-        let quitItem = NSMenuItem(title: "Avsluta Memento", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L.quitMemento, action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         
@@ -92,8 +92,8 @@ class MenuBarManager {
         
         // Update menu items
         if let menu = statusItem?.menu {
-            menu.item(withTag: 100)?.title = isCapturing ? "● Spelar in" : "○ Pausad"
-            menu.item(withTag: 101)?.title = isCapturing ? "Pausa inspelning" : "Fortsätt inspelning"
+            menu.item(withTag: 100)?.title = isCapturing ? L.recording : L.paused
+            menu.item(withTag: 101)?.title = isCapturing ? L.pauseRecording : L.resumeRecording
         }
     }
     
@@ -113,7 +113,6 @@ class MenuBarManager {
     }
     
     @objc private func showStats() {
-        // Get stats from database
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
         let cachePath = home.appendingPathComponent(".cache/memento")
@@ -122,7 +121,6 @@ class MenuBarManager {
         var embeddingCount = 0
         var diskUsage = "?"
         
-        // Count frames and embeddings
         var db: OpaquePointer?
         if sqlite3_open(dbPath, &db) == SQLITE_OK {
             var stmt: OpaquePointer?
@@ -141,7 +139,6 @@ class MenuBarManager {
             sqlite3_close(db)
         }
         
-        // Get disk usage
         if let enumerator = FileManager.default.enumerator(at: cachePath, includingPropertiesForKeys: [.fileSizeKey]) {
             var totalSize: Int64 = 0
             while let url = enumerator.nextObject() as? URL {
@@ -156,18 +153,17 @@ class MenuBarManager {
             }
         }
         
-        // Show alert with stats
         let alert = NSAlert()
-        alert.messageText = "Memento Statistik"
+        alert.messageText = L.statisticsTitle
         alert.informativeText = """
-        📊 Frames: \(frameCount)
-        🧠 Embeddings: \(embeddingCount)
-        💾 Disk: \(diskUsage)
-        📁 Plats: ~/.cache/memento/
+        📊 \(L.frames): \(frameCount)
+        🧠 \(L.embeddings): \(embeddingCount)
+        💾 \(L.disk): \(diskUsage)
+        📁 \(L.location): ~/.cache/memento/
         """
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Öppna mapp")
+        alert.addButton(withTitle: L.ok)
+        alert.addButton(withTitle: L.openFolder)
         
         let response = alert.runModal()
         if response == .alertSecondButtonReturn {
@@ -177,12 +173,12 @@ class MenuBarManager {
     
     @objc private func cleanOldFrames() {
         let alert = NSAlert()
-        alert.messageText = "Rensa gamla frames"
-        alert.informativeText = "Välj hur gamla frames du vill ta bort:"
+        alert.messageText = L.cleanTitle
+        alert.informativeText = L.cleanMessage
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Äldre än 7 dagar")
-        alert.addButton(withTitle: "Äldre än 30 dagar")
-        alert.addButton(withTitle: "Avbryt")
+        alert.addButton(withTitle: L.olderThan7Days)
+        alert.addButton(withTitle: L.olderThan30Days)
+        alert.addButton(withTitle: L.cancel)
         
         let response = alert.runModal()
         
@@ -196,7 +192,6 @@ class MenuBarManager {
             return
         }
         
-        // Calculate cutoff date
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
         let cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
         
@@ -207,10 +202,8 @@ class MenuBarManager {
         var deletedFrames = 0
         var deletedVideos = 0
         
-        // Delete from database
         var db: OpaquePointer?
         if sqlite3_open(dbPath, &db) == SQLITE_OK {
-            // Get frame IDs to delete
             var frameIds: [Int] = []
             var stmt: OpaquePointer?
             let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
@@ -222,18 +215,12 @@ class MenuBarManager {
                 sqlite3_finalize(stmt)
             }
             
-            // Delete embeddings
             sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            
-            // Delete content
             sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            
-            // Delete frames
             sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
             
             deletedFrames = frameIds.count
             
-            // Delete video files
             for frameId in frameIds {
                 let videoPath = cachePath.appendingPathComponent("\(frameId).mp4")
                 if FileManager.default.fileExists(atPath: videoPath.path) {
@@ -242,17 +229,15 @@ class MenuBarManager {
                 }
             }
             
-            // Vacuum database
             sqlite3_exec(db, "VACUUM", nil, nil, nil)
             sqlite3_close(db)
         }
         
-        // Show result
         let resultAlert = NSAlert()
-        resultAlert.messageText = "Rensning klar"
-        resultAlert.informativeText = "Raderade \(deletedFrames) frames och \(deletedVideos) video-filer."
+        resultAlert.messageText = L.cleanDone
+        resultAlert.informativeText = L.cleanResult(deletedFrames, deletedVideos)
         resultAlert.alertStyle = .informational
-        resultAlert.addButton(withTitle: "OK")
+        resultAlert.addButton(withTitle: L.ok)
         resultAlert.runModal()
     }
     
@@ -261,13 +246,12 @@ class MenuBarManager {
             let capture = ScreenshotCapture()
             guard let image = await capture.capture() else {
                 let alert = NSAlert()
-                alert.messageText = "Fel"
-                alert.informativeText = "Kunde inte ta skärmdump. Kontrollera behörigheter."
+                alert.messageText = L.errorTitle
+                alert.informativeText = L.screenshotError
                 alert.runModal()
                 return
             }
             
-            // Save to Desktop
             let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
             let path = desktop.appendingPathComponent("memento-debug-\(Int(Date().timeIntervalSince1970)).png")
             
@@ -276,10 +260,10 @@ class MenuBarManager {
                 try? data.write(to: path)
                 
                 let alert = NSAlert()
-                alert.messageText = "Debug-skärmdump sparad"
-                alert.informativeText = "Bild sparad på skrivbordet:\n\(path.lastPathComponent)\n\nStorlek: \(image.width)x\(image.height)"
-                alert.addButton(withTitle: "Öppna")
-                alert.addButton(withTitle: "OK")
+                alert.messageText = L.debugScreenshotSaved
+                alert.informativeText = L.screenshotSavedMessage(path.lastPathComponent, image.width, image.height)
+                alert.addButton(withTitle: L.open)
+                alert.addButton(withTitle: L.ok)
                 
                 let response = alert.runModal()
                 if response == .alertFirstButtonReturn {
@@ -294,18 +278,18 @@ class MenuBarManager {
         
         if hasPermission {
             let alert = NSAlert()
-            alert.messageText = "Behörigheter OK"
-            alert.informativeText = "Screen Recording-behörighet är beviljad. Appen kan fånga hela skärmen."
+            alert.messageText = L.permissionsOkTitle
+            alert.informativeText = L.permissionsOkMessage
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: L.ok)
             alert.runModal()
         } else {
             let alert = NSAlert()
-            alert.messageText = "Behörighet saknas"
-            alert.informativeText = "Screen Recording-behörighet krävs för att fånga hela skärmen med appar. Utan den fångas bara bakgrundsbilden.\n\nGå till: Systeminställningar > Integritet och säkerhet > Skärminspelning"
+            alert.messageText = L.permissionsMissingTitle
+            alert.informativeText = L.permissionsMissingMessage
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Öppna Inställningar")
-            alert.addButton(withTitle: "Avbryt")
+            alert.addButton(withTitle: L.openSettings)
+            alert.addButton(withTitle: L.cancel)
             
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
@@ -319,7 +303,7 @@ class MenuBarManager {
     private func updatePermissionMenuItem() {
         if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
             let hasPermission = ScreenshotCapture.hasPermission()
-            item.title = hasPermission ? "✓ Behörigheter OK" : "⚠ Behörigheter saknas"
+            item.title = hasPermission ? L.permissionsOk : L.permissionsMissing
         }
     }
     
@@ -328,4 +312,3 @@ class MenuBarManager {
         NSApp.terminate(nil)
     }
 }
-

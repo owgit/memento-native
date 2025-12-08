@@ -28,13 +28,12 @@ class OnboardingWindow {
             defer: false
         )
         
-        window?.title = "Välkommen till Memento"
+        window?.title = L.welcomeTitle
         window?.contentViewController = hostingController
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         window?.level = .floating
         
-        // Activate app to show window
         NSApp.activate(ignoringOtherApps: true)
     }
     
@@ -51,48 +50,45 @@ struct OnboardingView: View {
     
     var body: some View {
         VStack(spacing: 24) {
-            // Icon
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 64))
                 .foregroundColor(.blue)
                 .padding(.top, 20)
             
-            // Title
-            Text("Memento")
+            Text(L.memento)
                 .font(.largeTitle)
                 .fontWeight(.bold)
             
-            Text("Din visuella tidsmaskin")
+            Text(L.tagline)
                 .font(.title3)
                 .foregroundColor(.secondary)
             
             Divider()
                 .padding(.horizontal, 40)
             
-            // Features
             VStack(alignment: .leading, spacing: 16) {
                 FeatureRow(
                     icon: "camera.fill",
-                    title: "Skärminspelning",
-                    description: "Tar skärmbilder var 2:a sekund"
+                    title: L.featureRecording,
+                    description: L.featureRecordingDesc
                 )
                 
                 FeatureRow(
                     icon: "text.viewfinder",
-                    title: "OCR-sökning",
-                    description: "Sök i all text du sett på skärmen"
+                    title: L.featureOCR,
+                    description: L.featureOCRDesc
                 )
                 
                 FeatureRow(
                     icon: "lock.shield.fill",
-                    title: "100% Lokalt",
-                    description: "All data stannar på din Mac"
+                    title: L.featurePrivacy,
+                    description: L.featurePrivacyDesc
                 )
                 
                 FeatureRow(
                     icon: "leaf.fill",
-                    title: "Låg resursanvändning",
-                    description: "Endast ~1% RAM, minimal CPU"
+                    title: L.featureLowResource,
+                    description: L.featureLowResourceDesc
                 )
             }
             .padding(.horizontal, 30)
@@ -100,17 +96,16 @@ struct OnboardingView: View {
             Divider()
                 .padding(.horizontal, 40)
             
-            // Permission section
             VStack(spacing: 12) {
                 HStack {
                     Image(systemName: hasPermission ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .foregroundColor(hasPermission ? .green : .orange)
-                    Text("Skärminspelning krävs")
+                    Text(L.screenRecordingRequired)
                         .fontWeight(.medium)
                 }
                 
                 if !hasPermission {
-                    Button("Öppna Systeminställningar") {
+                    Button(L.openSystemSettings) {
                         openScreenRecordingSettings()
                     }
                     .buttonStyle(.borderedProminent)
@@ -119,9 +114,8 @@ struct OnboardingView: View {
             
             Spacer()
             
-            // Start button
             Button(action: onComplete) {
-                Text("Starta Memento")
+                Text(L.startMemento)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
             }
@@ -137,20 +131,16 @@ struct OnboardingView: View {
     }
     
     private func checkPermission() {
-        // Check screen recording permission
         hasPermission = CGPreflightScreenCaptureAccess()
     }
     
     private func openScreenRecordingSettings() {
-        // Request permission (triggers system dialog)
         CGRequestScreenCaptureAccess()
         
-        // Also open System Preferences
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
         
-        // Check again after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             checkPermission()
         }

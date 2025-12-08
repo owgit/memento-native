@@ -85,7 +85,7 @@ struct ContentView: View {
                     Spacer()
                     HStack {
                         Image(systemName: "doc.on.clipboard.fill")
-                        Text("Kopierat!")
+                        Text(L.copied)
                     }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white)
@@ -163,7 +163,7 @@ struct ContentView: View {
                         .lineLimit(1)
                 }
                 
-                Text(manager.currentTime.isEmpty ? "Laddar..." : formatTime(manager.currentTime))
+                Text(manager.currentTime.isEmpty ? L.loading : formatTime(manager.currentTime))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(.white.opacity(0.6))
             }
@@ -184,7 +184,7 @@ struct ContentView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .help("Kopiera ALL text")
+            .help(L.copyAllText)
             
             // Show text panel button
             Button(action: { 
@@ -263,7 +263,7 @@ struct ContentView: View {
                         Text("\(manager.currentFrameIndex + 1)")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
-                        Text("av \(manager.totalFrames)")
+                        Text("\(L.of) \(manager.totalFrames)")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -320,7 +320,7 @@ struct ContentView: View {
                         .font(.system(size: 16))
                 }
                 .buttonStyle(ControlButtonStyle())
-                .help("Anpassa till fönster")
+                .help(L.fitToWindow)
             }
         }
         .padding(.horizontal, 24)
@@ -459,7 +459,7 @@ struct ContentView: View {
                     Button(action: { manager.useSemanticSearch = false }) {
                         HStack(spacing: 6) {
                             Image(systemName: "text.magnifyingglass")
-                            Text("Text")
+                            Text(L.text)
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(manager.useSemanticSearch ? .white.opacity(0.5) : .white)
@@ -475,7 +475,7 @@ struct ContentView: View {
                     Button(action: { manager.useSemanticSearch = true }) {
                         HStack(spacing: 6) {
                             Image(systemName: "brain")
-                            Text("Semantisk")
+                            Text(L.semantic)
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(manager.useSemanticSearch ? .white : .white.opacity(0.5))
@@ -500,7 +500,7 @@ struct ContentView: View {
                         .font(.system(size: 20))
                         .foregroundColor(manager.useSemanticSearch ? .purple.opacity(0.6) : .white.opacity(0.4))
                     
-                    TextField(manager.useSemanticSearch ? "Beskriv vad du letar efter..." : "Sök i din tidslinje...", text: $manager.searchQuery)
+                    TextField(manager.useSemanticSearch ? L.semanticPlaceholder : L.searchPlaceholder, text: $manager.searchQuery)
                         .textFieldStyle(.plain)
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white)
@@ -573,7 +573,7 @@ struct ContentView: View {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 40))
                             .foregroundColor(.white.opacity(0.2))
-                        Text("Inga resultat för \"\(manager.searchQuery)\"")
+                        Text(L.noResults(manager.searchQuery))
                             .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -583,7 +583,7 @@ struct ContentView: View {
                         Image(systemName: "text.magnifyingglass")
                             .font(.system(size: 40))
                             .foregroundColor(.white.opacity(0.2))
-                        Text("Skriv för att söka")
+                        Text(L.typeToSearch)
                             .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -609,7 +609,7 @@ struct ContentView: View {
             ProgressView()
                 .scaleEffect(1.2)
                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
-            Text("Laddar...")
+            Text(L.loading)
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.6))
         }
@@ -630,7 +630,7 @@ struct ContentView: View {
                 HStack {
                     Image(systemName: "text.quote")
                         .font(.system(size: 14))
-                    Text("Text från skärmbild")
+                    Text(L.textFromScreenshot)
                         .font(.system(size: 14, weight: .semibold))
                     
                     Spacer()

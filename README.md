@@ -2,6 +2,8 @@
 
 **Open-source macOS screen recorder with OCR search** — like Rewind.ai but 100% local & private.
 
+> Native Swift implementation inspired by [apirrone/Memento](https://github.com/apirrone/Memento) (Python). Rewritten from scratch for macOS with ScreenCaptureKit, Vision OCR, and zero dependencies.
+
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -75,10 +77,11 @@ Data stored in `~/.cache/memento/`
 
 ## Alternatives
 
-| App | Price | Privacy |
-|-----|-------|---------|
-| Rewind.ai | $19/mo | Cloud-based |
-| **Memento** | **Free** | **100% local** |
+| App | Platform | Price | Privacy |
+|-----|----------|-------|---------|
+| [Rewind.ai](https://rewind.ai) | macOS | $19/mo | Cloud |
+| [Memento (Python)](https://github.com/apirrone/Memento) | Linux | Free | Local |
+| **Memento Native** | **macOS** | **Free** | **Local** |
 
 ## Roadmap
 
