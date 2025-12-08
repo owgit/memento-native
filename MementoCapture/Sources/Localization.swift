@@ -49,6 +49,7 @@ enum L {
     static var cleanMessage: String { isSwedish ? "Välj hur gamla frames du vill ta bort:" : "Choose how old frames to remove:" }
     static var olderThan7Days: String { isSwedish ? "Äldre än 7 dagar" : "Older than 7 days" }
     static var olderThan30Days: String { isSwedish ? "Äldre än 30 dagar" : "Older than 30 days" }
+    static var deleteAll: String { isSwedish ? "Radera ALLT" : "Delete ALL" }
     static var cleanDone: String { isSwedish ? "Rensning klar" : "Cleanup Complete" }
     static func cleanResult(_ frames: Int, _ videos: Int) -> String {
         isSwedish 

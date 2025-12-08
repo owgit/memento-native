@@ -178,23 +178,33 @@ class MenuBarManager {
         alert.alertStyle = .warning
         alert.addButton(withTitle: L.olderThan7Days)
         alert.addButton(withTitle: L.olderThan30Days)
+        alert.addButton(withTitle: L.deleteAll)
         alert.addButton(withTitle: L.cancel)
         
         let response = alert.runModal()
         
+        var deleteAll = false
         var daysToKeep = 0
         switch response {
         case .alertFirstButtonReturn:
             daysToKeep = 7
         case .alertSecondButtonReturn:
             daysToKeep = 30
+        case .alertThirdButtonReturn:
+            deleteAll = true
         default:
             return
         }
         
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
-        let cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
-        print("🗑️ Cleaning frames older than: \(cutoffString)")
+        let cutoffString: String
+        if deleteAll {
+            cutoffString = ISO8601DateFormatter().string(from: Date().addingTimeInterval(86400)) // Tomorrow = delete all
+            print("🗑️ Deleting ALL frames")
+        } else {
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
+            cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
+            print("🗑️ Cleaning frames older than: \(cutoffString)")
+        }
         
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
