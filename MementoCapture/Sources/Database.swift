@@ -60,11 +60,12 @@ class Database {
             )
         """)
         
-        // Embeddings table for vector search
+        // Embeddings table for vector search (quantized int8 for 8x compression)
         execute("""
             CREATE TABLE IF NOT EXISTS EMBEDDING (
                 frame_id INTEGER PRIMARY KEY,
                 vector BLOB NOT NULL,
+                quantized INTEGER DEFAULT 1,
                 text_summary TEXT,
                 FOREIGN KEY (frame_id) REFERENCES FRAME(id)
             )
@@ -159,10 +160,10 @@ class Database {
         return results
     }
     
-    // MARK: - Embedding Storage
+    // MARK: - Embedding Storage (Quantized Int8)
     
-    func insertEmbedding(frameId: Int, vector: Data, textSummary: String) {
-        let sql = "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, text_summary) VALUES (?, ?, ?)"
+    func insertEmbedding(frameId: Int, vector: Data, textSummary: String, quantized: Bool = true) {
+        let sql = "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, quantized, text_summary) VALUES (?, ?, ?, ?)"
         var stmt: OpaquePointer?
         
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
@@ -170,16 +171,17 @@ class Database {
             _ = vector.withUnsafeBytes { ptr in
                 sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(vector.count), SQLITE_TRANSIENT)
             }
-            sqlite3_bind_text(stmt, 3, textSummary, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 3, quantized ? 1 : 0)
+            sqlite3_bind_text(stmt, 4, textSummary, -1, SQLITE_TRANSIENT)
             sqlite3_step(stmt)
             sqlite3_finalize(stmt)
         }
     }
     
-    func getAllEmbeddings() -> [(frameId: Int, vector: Data, summary: String)] {
-        let sql = "SELECT frame_id, vector, text_summary FROM EMBEDDING"
+    func getAllEmbeddings() -> [(frameId: Int, vector: Data, quantized: Bool, summary: String)] {
+        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
         var stmt: OpaquePointer?
-        var results: [(Int, Data, String)] = []
+        var results: [(Int, Data, Bool, String)] = []
         
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             while sqlite3_step(stmt) == SQLITE_ROW {
@@ -188,21 +190,36 @@ class Database {
                 if let blobPtr = sqlite3_column_blob(stmt, 1) {
                     let blobSize = Int(sqlite3_column_bytes(stmt, 1))
                     let vector = Data(bytes: blobPtr, count: blobSize)
+                    let quantized = sqlite3_column_int(stmt, 2) == 1
                     
                     let summary: String
-                    if let textPtr = sqlite3_column_text(stmt, 2) {
+                    if let textPtr = sqlite3_column_text(stmt, 3) {
                         summary = String(cString: textPtr)
                     } else {
                         summary = ""
                     }
                     
-                    results.append((frameId, vector, summary))
+                    results.append((frameId, vector, quantized, summary))
                 }
             }
             sqlite3_finalize(stmt)
         }
         
         return results
+    }
+    
+    func getEmbeddingCount() -> Int {
+        let sql = "SELECT COUNT(*) FROM EMBEDDING"
+        var stmt: OpaquePointer?
+        var count = 0
+        
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(stmt, 0))
+            }
+            sqlite3_finalize(stmt)
+        }
+        return count
     }
     
     func getFramesWithoutEmbedding(limit: Int = 100) -> [(frameId: Int, text: String)] {

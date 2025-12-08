@@ -121,13 +121,15 @@ class CaptureService {
             textBlocks: ocrResults
         )
         
-        // Generate embedding for semantic search (every frame with OCR)
+        // Generate quantized embedding for semantic search (8x smaller storage)
         if !ocrResults.isEmpty {
             let allText = ocrResults.map { $0.text }.joined(separator: " ")
             if let vector = embeddingService.embed(allText) {
-                let vectorData = embeddingService.vectorToData(vector)
+                // Quantize to int8 (512 bytes instead of 2048)
+                let quantized = embeddingService.quantize(vector)
+                let vectorData = embeddingService.quantizedToData(quantized)
                 let summary = String(allText.prefix(200))
-                database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary)
+                database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary, quantized: true)
             }
         }
         

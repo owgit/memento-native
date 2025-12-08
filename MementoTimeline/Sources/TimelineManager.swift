@@ -567,19 +567,20 @@ class TimelineManager: ObservableObject {
         
         log("🧠 Semantic search for: '\(query)'")
         
-        // Generate query embedding
+        // Generate query embedding and quantize
         guard let queryVector = embeddingService.embed(query) else {
             log("⚠️ Failed to embed query")
             search(query)  // Fallback to text search
             return
         }
+        let queryQuantized = embeddingService.quantize(queryVector)
         
         // Load all embeddings from database
         var db: OpaquePointer?
         guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
         defer { sqlite3_close(db) }
         
-        let sql = "SELECT frame_id, vector, text_summary FROM EMBEDDING"
+        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -592,17 +593,24 @@ class TimelineManager: ObservableObject {
             guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
             let blobSize = Int(sqlite3_column_bytes(stmt, 1))
             let vectorData = Data(bytes: blobPtr, count: blobSize)
-            let storedVector = embeddingService.dataToVector(vectorData)
+            let isQuantized = sqlite3_column_int(stmt, 2) == 1
             
             let summary: String
-            if let textPtr = sqlite3_column_text(stmt, 2) {
+            if let textPtr = sqlite3_column_text(stmt, 3) {
                 summary = String(cString: textPtr)
             } else {
                 summary = ""
             }
             
-            // Calculate similarity
-            let similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
+            // Calculate similarity (use quantized if stored that way)
+            let similarity: Float
+            if isQuantized {
+                let storedQuantized = embeddingService.dataToQuantized(vectorData)
+                similarity = embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized)
+            } else {
+                let storedVector = embeddingService.dataToVector(vectorData)
+                similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
+            }
             
             if similarity > 0.3 {  // Threshold
                 matches.append((frameId, similarity, summary))
