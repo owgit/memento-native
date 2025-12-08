@@ -108,8 +108,7 @@ class MenuBarManager {
     }
     
     @objc private func openTimeline() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let timelineAppPath = home.appendingPathComponent("Applications/Memento Timeline.app")
+        let timelineAppPath = URL(fileURLWithPath: "/Applications/Memento Timeline.app")
         NSWorkspace.shared.open(timelineAppPath)
     }
     
@@ -218,31 +217,55 @@ class MenuBarManager {
         if sqlite3_open(dbPath, &db) == SQLITE_OK {
             var frameIds: [Int] = []
             var stmt: OpaquePointer?
-            let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
-            if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, cutoffString, -1, nil)
-                while sqlite3_step(stmt) == SQLITE_ROW {
-                    frameIds.append(Int(sqlite3_column_int(stmt, 0)))
-                }
-                sqlite3_finalize(stmt)
-            }
             
-            sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
+            if deleteAll {
+                // Get all frame IDs
+                let selectSQL = "SELECT id FROM FRAME"
+                if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
+                    while sqlite3_step(stmt) == SQLITE_ROW {
+                        frameIds.append(Int(sqlite3_column_int(stmt, 0)))
+                    }
+                    sqlite3_finalize(stmt)
+                }
+                // Delete everything
+                sqlite3_exec(db, "DELETE FROM EMBEDDING", nil, nil, nil)
+                sqlite3_exec(db, "DELETE FROM CONTENT", nil, nil, nil)
+                sqlite3_exec(db, "DELETE FROM FRAME", nil, nil, nil)
+            } else {
+                let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
+                if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_text(stmt, 1, cutoffString, -1, nil)
+                    while sqlite3_step(stmt) == SQLITE_ROW {
+                        frameIds.append(Int(sqlite3_column_int(stmt, 0)))
+                    }
+                    sqlite3_finalize(stmt)
+                }
+                sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
+                sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
+                sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
+            }
             
             deletedFrames = frameIds.count
             
-            // Videos are named by starting frame_id (0.mp4, 5.mp4, 10.mp4...)
-            // framesPerVideo = 5, so only delete videos where frameId % 5 == 0
-            let framesPerVideo = 5
-            let videoFrameIds = Set(frameIds.filter { $0 % framesPerVideo == 0 })
-            
-            for videoId in videoFrameIds {
-                let videoPath = cachePath.appendingPathComponent("\(videoId).mp4")
-                if FileManager.default.fileExists(atPath: videoPath.path) {
-                    try? FileManager.default.removeItem(at: videoPath)
-                    deletedVideos += 1
+            // Delete video files
+            if deleteAll {
+                // Delete ALL mp4 files in cache
+                if let files = try? FileManager.default.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil) {
+                    for file in files where file.pathExtension == "mp4" {
+                        try? FileManager.default.removeItem(at: file)
+                        deletedVideos += 1
+                    }
+                }
+            } else {
+                // Delete only videos matching deleted frame IDs
+                let framesPerVideo = 5
+                let videoFrameIds = Set(frameIds.filter { $0 % framesPerVideo == 0 })
+                for videoId in videoFrameIds {
+                    let videoPath = cachePath.appendingPathComponent("\(videoId).mp4")
+                    if FileManager.default.fileExists(atPath: videoPath.path) {
+                        try? FileManager.default.removeItem(at: videoPath)
+                        deletedVideos += 1
+                    }
                 }
             }
             

@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="Memento Capture"
 BUNDLE_ID="com.memento.capture"
-APP_DIR="$HOME/Applications/${APP_NAME}.app"
+APP_DIR="/Applications/${APP_NAME}.app"
 BINARY_PATH="$APP_DIR/Contents/MacOS/memento-capture"
 
 echo "🔨 Building release..."

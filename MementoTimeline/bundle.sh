@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="Memento Timeline"
 BUNDLE_ID="com.memento.timeline"
-APP_DIR="$HOME/Applications/${APP_NAME}.app"
+APP_DIR="/Applications/${APP_NAME}.app"
 BINARY_PATH="$APP_DIR/Contents/MacOS/MementoTimeline"
 
 echo "🔨 Building release..."
