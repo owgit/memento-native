@@ -108,8 +108,19 @@ class MenuBarManager {
     }
     
     @objc private func openTimeline() {
-        let timelineAppPath = URL(fileURLWithPath: "/Applications/Memento Timeline.app")
-        NSWorkspace.shared.open(timelineAppPath)
+        // Try /Applications first, then ~/Applications
+        let paths = [
+            "/Applications/Memento Timeline.app",
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Memento Timeline.app").path
+        ]
+        for path in paths {
+            let url = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: path) {
+                NSWorkspace.shared.open(url)
+                return
+            }
+        }
+        print("⚠️ Memento Timeline not found")
     }
     
     @objc private func showStats() {
