@@ -19,9 +19,14 @@ if [ -f "$BINARY_PATH" ]; then
     fi
     echo "📦 Updating binary..."
     cp .build/release/memento-capture "$BINARY_PATH"
+    
+    # Update Info.plist with new build number
+    BUILD_NUMBER=$(date +%Y%m%d%H%M)
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
+    
     # Re-sign after binary update
     codesign --force --deep --sign - "$APP_DIR" 2>/dev/null
-    echo "✅ Binary updated"
+    echo "✅ Binary updated (build $BUILD_NUMBER)"
     echo ""
     echo "ℹ️  If screen capture stops working, use the in-app Permission Guide"
     echo "   (Menu > Permissions... > follow instructions)"
@@ -40,8 +45,9 @@ cp .build/release/memento-capture "$BINARY_PATH"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
 
-# Create Info.plist
-cat > "$APP_DIR/Contents/Info.plist" << EOF
+# Create Info.plist with dynamic build number
+BUILD_NUMBER=$(date +%Y%m%d%H%M)
+cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -55,7 +61,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${BUILD_NUMBER}</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundlePackageType</key>

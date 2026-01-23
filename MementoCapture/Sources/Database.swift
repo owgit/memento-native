@@ -48,6 +48,7 @@ class Database {
         execute("ALTER TABLE FRAME ADD COLUMN tab_title TEXT")
         execute("ALTER TABLE FRAME ADD COLUMN app_bundle_id TEXT")
         execute("ALTER TABLE FRAME ADD COLUMN clipboard TEXT")
+        execute("ALTER TABLE FRAME ADD COLUMN app_category TEXT")
         
         // Content table
         execute("""
@@ -106,12 +107,13 @@ class Database {
         url: String? = nil,
         tabTitle: String? = nil,
         appBundleId: String? = nil,
-        clipboard: String? = nil
+        clipboard: String? = nil,
+        appCategory: String? = nil
     ) {
         // Insert frame with extended metadata
         let frameSQL = """
-            INSERT OR REPLACE INTO FRAME (id, window_title, time, url, tab_title, app_bundle_id, clipboard)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO FRAME (id, window_title, time, url, tab_title, app_bundle_id, clipboard, app_category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         var stmt: OpaquePointer?
         
@@ -138,6 +140,11 @@ class Database {
                 sqlite3_bind_text(stmt, 7, clipboard, -1, SQLITE_TRANSIENT)
             } else {
                 sqlite3_bind_null(stmt, 7)
+            }
+            if let appCategory = appCategory {
+                sqlite3_bind_text(stmt, 8, appCategory, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 8)
             }
             sqlite3_step(stmt)
             sqlite3_finalize(stmt)

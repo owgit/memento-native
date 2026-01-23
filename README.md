@@ -6,7 +6,7 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-PolyForm%20NC-blue.svg)](LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/uygarduzgun)
 
 > Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
@@ -128,7 +128,7 @@ Local LLM integration for natural language queries:
 
 ## License
 
-MIT — use it however you want.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal and non-commercial use. Commercial sale prohibited.
 
 ---
 

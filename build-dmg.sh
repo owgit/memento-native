@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 DMG_NAME="Memento-Native-${VERSION}"
 DMG_DIR="dist"
 STAGING_DIR="${DMG_DIR}/staging"
@@ -50,9 +50,9 @@ cat > "$CAPTURE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Capture</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -65,6 +65,8 @@ cat > "$CAPTURE_APP/Contents/Info.plist" << 'EOF'
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Memento needs screen recording to capture and search your screen history.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2024-2025 Uygar Düzgün. PolyForm Noncommercial License.</string>
 </dict>
 </plist>
 EOF
@@ -92,9 +94,9 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Timeline</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -103,6 +105,8 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2024-2025 Uygar Düzgün. PolyForm Noncommercial License.</string>
 </dict>
 </plist>
 EOF
@@ -154,12 +158,21 @@ More info: https://github.com/owgit/memento-native
 
 ---
 
+LICENSE: PolyForm Noncommercial 1.0.0
+Free for personal use. Commercial sale prohibited.
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
+Copyright 2024-2025 Uygar Düzgün
+
+---
+
 ☕️ Support the project
 If you find Memento useful, consider buying me a coffee!
 https://buymeacoffee.com/uygarduzgun
-
-Thank you for your support! 🙏
 EOF
+
+# Copy LICENSE file
+cp LICENSE "${STAGING_DIR}/LICENSE.txt"
 
 # Create DMG
 echo "💿 Creating DMG..."
@@ -175,4 +188,15 @@ echo ""
 echo "✅ DMG created: ${DMG_DIR}/${DMG_NAME}.dmg"
 echo ""
 echo "📊 Size: $(du -h "${DMG_DIR}/${DMG_NAME}.dmg" | cut -f1)"
+
+# Auto-increment patch version for next build
+IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+NEXT_PATCH=$((PATCH + 1))
+NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+
+# Update version in this script for next build
+sed -i '' "s/^VERSION=\"${VERSION}\"/VERSION=\"${NEXT_VERSION}\"/" "$0"
+sed -i '' "s/<string>${VERSION}<\/string>/<string>${NEXT_VERSION}<\/string>/g" "$0"
+
+echo "📝 Next version: ${NEXT_VERSION}"
 

@@ -73,6 +73,7 @@ class CaptureService {
         print("⏹️  Stopping capture service...")
         timer?.invalidate()
         timer = nil
+        previousImage = nil  // Release memory
         videoEncoder.finalize()
     }
     
@@ -82,6 +83,12 @@ class CaptureService {
         // Get active app info
         let activeApp = getActiveApp()
         let appBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        
+        // Skip capture when Timeline app is open (saves resources)
+        if appBundleId == "com.memento.timeline" || activeApp == "Memento Timeline" || activeApp == "MementoTimeline" {
+            print("⏸️  Skipping capture - Timeline app is active")
+            return
+        }
         
         // Get browser URL and tab title
         let browserInfo = BrowserCapture.getCurrentBrowserInfo()
@@ -99,7 +106,7 @@ class CaptureService {
         let shouldOCR: Bool
         if let previous = previousImage {
             let diff = imageDifference(screenshot, previous)
-            shouldOCR = diff > 0.5  // Only OCR if significant change
+            shouldOCR = diff > 0.02  // OCR if >2% change (was 50% - too aggressive)
             if !shouldOCR {
                 print("⏭️  Frame \(frameCount): skipped (diff: \(String(format: "%.2f", diff)))")
             }
@@ -120,6 +127,9 @@ class CaptureService {
         // Get timestamp
         let timestamp = ISO8601DateFormatter().string(from: Date())
         
+        // Get app category from system
+        let appCategory = getAppCategory(bundleId: appBundleId)
+        
         // Store in database with extended metadata
         database.insertFrame(
             frameId: frameCount,
@@ -129,7 +139,8 @@ class CaptureService {
             url: browserInfo?.url,
             tabTitle: browserInfo?.title,
             appBundleId: appBundleId,
-            clipboard: clipboardContent
+            clipboard: clipboardContent,
+            appCategory: appCategory
         )
         
         // Generate quantized embedding for semantic search (8x smaller storage)
@@ -172,6 +183,18 @@ class CaptureService {
             return app.localizedName ?? "Unknown"
         }
         return "Unknown"
+    }
+    
+    /// Get app category from bundle Info.plist (LSApplicationCategoryType)
+    private func getAppCategory(bundleId: String?) -> String? {
+        guard let bundleId = bundleId,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId),
+              let bundle = Bundle(url: appURL),
+              let category = bundle.infoDictionary?["LSApplicationCategoryType"] as? String else {
+            return nil
+        }
+        // Strip "public.app-category." prefix for cleaner storage
+        return category.replacingOccurrences(of: "public.app-category.", with: "")
     }
     
     private func imageDifference(_ img1: CGImage, _ img2: CGImage) -> Double {

@@ -91,6 +91,14 @@ class MenuBarManager {
         quitItem.target = self
         menu.addItem(quitItem)
         
+        // Version (at the bottom, disabled)
+        menu.addItem(NSMenuItem.separator())
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let versionItem = NSMenuItem(title: "v\(version) (\(build))", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+        
         statusItem?.menu = menu
     }
     

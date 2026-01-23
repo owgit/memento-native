@@ -67,6 +67,12 @@ struct ContentView: View {
     @State private var zoomLevel: CGFloat = 1.0
     @State private var hasInitializedZoom = false
     @State private var isFitToScreen = true  // Track fit-to-screen mode
+    @State private var isDragging = false
+    @State private var dragFrameIndex: Int = 0
+    @State private var lastFrameLoadTime: Date = .distantPast
+    @State private var eventMonitors: [Any] = []  // Store event monitors to prevent leak
+    @State private var searchDebounceTask: Task<Void, Never>?
+    @FocusState private var isSearchFieldFocused: Bool
     
     // Text selection - always enabled (Live Text handles it at any zoom)
     private var canSelectText: Bool { true }
@@ -102,17 +108,10 @@ struct ContentView: View {
                 .allowsHitTesting(false)
             }
             
-            // Controls overlay
+            // Controls overlay - only bottom bar
             VStack {
-                // Top bar - app info
-                if showControls {
-                    topBar
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                
                 Spacer()
                 
-                // Bottom floating controls
                 if showControls {
                     floatingControls
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -134,7 +133,7 @@ struct ContentView: View {
             }
             
             // Loading indicator
-            if manager.isLoading {
+            if manager.isLoading || manager.isLoadingMore {
                 loadingView
             }
             
@@ -161,6 +160,38 @@ struct ContentView: View {
             }
         }
         .background(Color.black)
+        .focusable(!manager.isSearching)  // Only focusable when not searching
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) {
+            if !manager.isSearching {
+                manager.previousFrame()
+                showControlsTemporarily()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.rightArrow) {
+            if !manager.isSearching {
+                manager.nextFrame()
+                showControlsTemporarily()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.space) {
+            if !manager.isSearching {
+                showControls.toggle()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.escape) {
+            if manager.isSearching {
+                withAnimation { manager.isSearching = false }
+                return .handled
+            }
+            return .ignored
+        }
         .onAppear { 
             setupKeyHandling()
         }
@@ -178,308 +209,194 @@ struct ContentView: View {
     
     // MARK: - Frame View
     private var frameView: some View {
-        GeometryReader { geometry in
+        ZStack {
+            Color.black
+            
             if let image = manager.currentFrame {
-                ZStack {
-                    // Blurred background fill (like iOS photo viewer)
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .blur(radius: 30)
-                        .opacity(0.5)
-                        .clipped()
-                    
-                    // Main image with Live Text
-                    LiveTextImageView(image: image, zoomLevel: $zoomLevel, isFitToScreen: isFitToScreen)
-                }
-            } else {
-                Color.black
-            }
-        }
-    }
-    
-    // MARK: - Top Bar
-    private var topBar: some View {
-        HStack(spacing: 16) {
-            // App icon placeholder
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.8))
-                )
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    // App color indicator
-                    Circle()
-                        .fill(manager.getColorForCurrentFrame())
-                        .frame(width: 8, height: 8)
-                    
-                    Text(manager.currentApp.isEmpty ? "Memento Timeline" : manager.currentApp)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                }
+                // Fallback: SwiftUI Image shows immediately
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                Text(manager.currentTime.isEmpty ? L.loading : formatTime(manager.currentTime))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            
-            Spacer()
-            
-            // Copy ALL text button (no keyboard shortcut - let native ⌘C work for selection)
-            Button(action: { 
-                withAnimation(.spring(response: 0.3)) { 
-                    manager.copyAllText()
+                // Live Text overlay for text selection (renders on top)
+                LiveTextImageView(image: image, zoomLevel: $zoomLevel, isFitToScreen: true)
+            } else {
+                // Loading state
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    Text(manager.totalFrames > 0 ? L.loading : "No captures yet")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
                 }
-            }) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(Circle())
             }
-            .buttonStyle(.plain)
-            .help(L.copyAllText)
-            
-            // Show text panel button
-            Button(action: { 
-                withAnimation(.spring(response: 0.3)) { 
-                    manager.showTextOverlay.toggle()
-                    if manager.showTextOverlay {
-                        manager.loadTextForCurrentFrame()
-                    }
-                }
-            }) {
-                Image(systemName: manager.showTextOverlay ? "text.bubble.fill" : "text.bubble")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-                    .frame(width: 36, height: 36)
-                    .background(manager.showTextOverlay ? Color.white.opacity(0.2) : Color.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("t", modifiers: .command)
-            .help("Visa text (⌘T)")
-            
-            // Search button
-            Button(action: { withAnimation { manager.isSearching = true } }) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("f", modifiers: .command)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 20, y: 5)
-        )
     }
     
     // MARK: - Floating Controls
     private var floatingControls: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // Timeline scrubber
             timelineScrubber
             
-            // Playback controls
-            HStack(spacing: 32) {
-                // Skip to start
-                Button(action: { manager.jumpToFrame(0) }) {
-                    Image(systemName: "backward.end.fill")
-                        .font(.system(size: 18))
+            // Main controls - simplified layout
+            HStack(spacing: 0) {
+                // Left: Navigation
+                HStack(spacing: 16) {
+                    Button(action: { manager.jumpToFrame(0) }) {
+                        Image(systemName: "backward.end.fill")
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(ControlButtonStyle(size: 32))
+                    .help("Första (Home)")
+                    
+                    Button(action: { manager.previousFrame() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+                    .buttonStyle(ControlButtonStyle(size: 44))
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                    .help("Föregående (←)")
                 }
-                .buttonStyle(ControlButtonStyle())
                 
-                // Previous frame
-                Button(action: { manager.previousFrame() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 24, weight: .semibold))
-                }
-                .buttonStyle(ControlButtonStyle(size: 50))
-                .keyboardShortcut(.leftArrow, modifiers: [])
+                Spacer()
                 
-                // Time display with app icon
-                HStack(spacing: 8) {
-                    if let segment = manager.getSegmentForIndex(manager.currentFrameIndex) {
-                        // App icon
+                // Center: Time & App (prominent)
+                if let segment = manager.getSegmentForIndex(manager.currentFrameIndex) {
+                    HStack(spacing: 10) {
                         AppIconView(appName: segment.appName)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 36, height: 36)
                         
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 1) {
                             Text(formatTimeDisplay(segment.timeString))
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
+                                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
                             Text(segment.appName)
-                                .font(.system(size: 11))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(segment.color)
                         }
-                    } else {
-                        Text("\(manager.currentFrameIndex + 1) \(L.of) \(manager.totalFrames)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.primary.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+                } else {
+                    Text("\(manager.currentFrameIndex + 1) / \(manager.totalFrames)")
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary.opacity(0.6))
                 }
-                .frame(minWidth: 140)
                 
-                // Next frame
-                Button(action: { manager.nextFrame() }) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 24, weight: .semibold))
-                }
-                .buttonStyle(ControlButtonStyle(size: 50))
-                .keyboardShortcut(.rightArrow, modifiers: [])
+                Spacer()
                 
-                // Skip to end
-                Button(action: { manager.jumpToFrame(manager.totalFrames - 1) }) {
-                    Image(systemName: "forward.end.fill")
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(ControlButtonStyle())
-                
-                Divider()
-                    .frame(height: 30)
-                    .background(Color.white.opacity(0.2))
-                
-                // Zoom controls group
-                HStack(spacing: 8) {
-                    Button(action: { 
-                        isFitToScreen = false
-                        // Smart zoom steps: smaller when zoomed out
-                        let step: CGFloat = zoomLevel > 1.0 ? 0.25 : (zoomLevel > 0.5 ? 0.1 : 0.05)
-                        zoomLevel = max(0.1, zoomLevel - step)
-                    }) {
-                        Image(systemName: "minus")
-                            .font(.system(size: 14, weight: .medium))
+                // Right: Navigation + Zoom
+                HStack(spacing: 16) {
+                    Button(action: { manager.nextFrame() }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+                    .buttonStyle(ControlButtonStyle(size: 44))
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                    .help("Nästa (→)")
+                    
+                    Button(action: { manager.jumpToFrame(manager.totalFrames - 1) }) {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 14))
                     }
                     .buttonStyle(ControlButtonStyle(size: 32))
-                    .help(L.zoomOut)
+                    .help("Sista (End)")
                     
-                    // Zoom level - clickable to set 100%
-                    Button(action: { 
-                        isFitToScreen = false
-                        zoomLevel = 1.0 
-                    }) {
-                        Text(isFitToScreen ? "Fit" : "\(Int(zoomLevel * 100))%")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundColor(isFitToScreen ? .white.opacity(0.5) : (zoomLevel == 1.0 ? .white : .cyan))
+                    // Action buttons group
+                    HStack(spacing: 8) {
+                        // Search
+                        Button(action: { 
+                            // Ensure window is key and active
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                            NSApplication.shared.keyWindow?.makeKey()
+                            withAnimation { manager.isSearching = true }
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 30))
+                        .keyboardShortcut("f", modifiers: .command)
+                        .help("Sök (⌘F)")
+                        
+                        // Text panel
+                        Button(action: { 
+                            withAnimation(.spring(response: 0.3)) { 
+                                manager.showTextOverlay.toggle()
+                                if manager.showTextOverlay {
+                                    manager.loadTextForCurrentFrame()
+                                }
+                            }
+                        }) {
+                            Image(systemName: manager.showTextOverlay ? "text.bubble.fill" : "text.bubble")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.showTextOverlay))
+                        .keyboardShortcut("t", modifiers: .command)
+                        .help("Visa OCR-text (⌘T)")
+                        
+                        // Copy all
+                        Button(action: { manager.copyAllText() }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 30))
+                        .help("Kopiera all text")
                     }
-                    .buttonStyle(.plain)
-                    .frame(width: 50)
-                    .help(L.resetZoom)
-                    
-                    Button(action: { 
-                        isFitToScreen = false
-                        // Smart zoom steps: smaller when zoomed out
-                        let step: CGFloat = zoomLevel >= 1.0 ? 0.25 : (zoomLevel >= 0.5 ? 0.1 : 0.05)
-                        zoomLevel = min(5.0, zoomLevel + step)
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .buttonStyle(ControlButtonStyle(size: 32))
-                    .help(L.zoomIn)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.08))
-                )
-                
-                // Fit to window - highlighted when active
-                Button(action: { 
-                    isFitToScreen = true
-                    fitToScreen() 
-                }) {
-                    Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 14))
-                        .foregroundColor(isFitToScreen ? .cyan : .white)
-                }
-                .buttonStyle(ControlButtonStyle(size: 36, isActive: isFitToScreen))
-                .help(L.fitToWindow)
-                
-                Divider()
-                    .frame(height: 30)
-                    .background(Color.white.opacity(0.2))
-                
-                // Select-to-copy indicator - shows state
-                HStack(spacing: 6) {
-                    Image(systemName: canSelectText ? "text.cursor" : "text.cursor")
-                        .font(.system(size: 12))
-                    Text(canSelectText ? L.selectToCopy : L.zoomToSelect)
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(canSelectText ? .green : .white.opacity(0.4))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(canSelectText ? Color.green.opacity(0.15) : Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(canSelectText ? Color.green.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
-                        )
-                )
-                .help(canSelectText ? L.selectToCopyHelp : L.zoomToSelectHelp)
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.4), radius: 30, y: 10)
-        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 720)
+        .modifier(GlassBackgroundModifier(cornerRadius: 20))
     }
     
     // MARK: - Timeline Scrubber with App Colors
     private var timelineScrubber: some View {
         GeometryReader { geometry in
+            let displayIndex = isDragging ? dragFrameIndex : manager.currentFrameIndex
             let progress = manager.totalFrames > 0
-                ? CGFloat(manager.currentFrameIndex) / CGFloat(max(1, manager.totalFrames - 1))
+                ? CGFloat(displayIndex) / CGFloat(max(1, manager.totalFrames - 1))
                 : 0
             
             ZStack(alignment: .leading) {
-                // Background with app-colored segments
-                HStack(spacing: 0) {
-                    ForEach(manager.timelineSegments) { segment in
-                        let segmentWidth = geometry.size.width / CGFloat(max(1, manager.timelineSegments.count))
-                        Rectangle()
-                            .fill(segment.color.opacity(0.4))
-                            .frame(width: segmentWidth, height: 12)
-                    }
-                }
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
+                // Simplified background - single gradient instead of many rectangles
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3), Color.cyan.opacity(0.3)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 12)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
                 
-                // Progress overlay (darker)
+                // Progress overlay
                 Capsule()
                     .fill(Color.white.opacity(0.3))
                     .frame(width: max(6, geometry.size.width * progress), height: 12)
                 
                 // Hover preview with time
-                if isHoveringTimeline {
+                if isHoveringTimeline && !isDragging {
                     let hoverProgress = mouseLocation.x / geometry.size.width
                     let hoverIndex = Int(hoverProgress * CGFloat(manager.totalFrames - 1))
                     
                     VStack(spacing: 4) {
-                        // Time tooltip
                         if let segment = manager.getSegmentForIndex(hoverIndex) {
                             Text(segment.timeString.isEmpty ? "--:--" : formatTime(segment.timeString))
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -498,7 +415,6 @@ struct ContentView: View {
                     }
                     .offset(x: geometry.size.width * hoverProgress - 40, y: -45)
                     
-                    // Hover indicator
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Color.white)
                         .frame(width: 3, height: 20)
@@ -531,9 +447,22 @@ struct ContentView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let progress = max(0, min(1, value.location.x / geometry.size.width))
-                        let frameIndex = Int(progress * CGFloat(manager.totalFrames - 1))
-                        manager.jumpToFrame(frameIndex)
+                        isDragging = true
+                        let prog = max(0, min(1, value.location.x / geometry.size.width))
+                        dragFrameIndex = Int(prog * CGFloat(max(1, manager.totalFrames - 1)))
+                        
+                        // Throttle: only load frame every 150ms during drag
+                        let now = Date()
+                        if now.timeIntervalSince(lastFrameLoadTime) > 0.15 {
+                            lastFrameLoadTime = now
+                            manager.jumpToFrame(dragFrameIndex)
+                        }
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        let prog = max(0, min(1, value.location.x / geometry.size.width))
+                        let finalIndex = Int(prog * CGFloat(max(1, manager.totalFrames - 1)))
+                        manager.jumpToFrame(finalIndex)
                     }
             )
         }
@@ -613,26 +542,36 @@ struct ContentView: View {
                         .font(.system(size: 20))
                         .foregroundColor(manager.useSemanticSearch ? .purple.opacity(0.6) : .white.opacity(0.4))
                     
-                    TextField(manager.useSemanticSearch ? L.semanticPlaceholder : L.searchPlaceholder, text: $manager.searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.white)
-                        .onSubmit {
+                    SearchTextField(
+                        text: $manager.searchQuery,
+                        placeholder: manager.useSemanticSearch ? L.semanticPlaceholder : L.searchPlaceholder,
+                        onSubmit: {
                             if manager.useSemanticSearch {
                                 manager.semanticSearch(manager.searchQuery)
                             } else {
                                 manager.search(manager.searchQuery)
                             }
                         }
-                        .onChange(of: manager.searchQuery) { _, newValue in
-                            if newValue.count >= 2 {
+                    )
+                    .frame(height: 30)
+                    .onChange(of: manager.searchQuery) { _, newValue in
+                        searchDebounceTask?.cancel()
+                        
+                        if newValue.count >= 2 {
+                            searchDebounceTask = Task {
+                                try? await Task.sleep(nanoseconds: 150_000_000)
+                                guard !Task.isCancelled else { return }
+                                
                                 if manager.useSemanticSearch {
                                     manager.semanticSearch(newValue)
                                 } else {
                                     manager.search(newValue)
                                 }
                             }
+                        } else {
+                            manager.searchResults = []
                         }
+                    }
                     
                     if !manager.searchQuery.isEmpty {
                         Button(action: {
@@ -837,15 +776,15 @@ struct ContentView: View {
     }
     
     private func setupKeyHandling() {
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handleKeyEvent(event)
-            return event
-        }
+        // Only setup once - check if already setup
+        guard eventMonitors.isEmpty else { return }
         
-        // Also handle mouse movement to show controls
-        NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { event in
+        // Only monitor mouse movement - keyboard is handled by SwiftUI
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { event in
             showControlsTemporarily()
             return event
+        }) {
+            eventMonitors.append(monitor)
         }
     }
     
@@ -896,25 +835,79 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Glass Background Modifier (Liquid Glass on macOS 26+, Material on older)
+struct GlassBackgroundModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(.regularMaterial)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+        }
+    }
+}
+
 // MARK: - Control Button Style
-struct ControlButtonStyle: ButtonStyle {
+struct ControlButtonStyle: PrimitiveButtonStyle {
     var size: CGFloat = 40
     var isActive: Bool = false
     
     func makeBody(configuration: Configuration) -> some View {
+        ControlButtonView(configuration: configuration, size: size, isActive: isActive)
+    }
+}
+
+struct ControlButtonView: View {
+    let configuration: PrimitiveButtonStyle.Configuration
+    let size: CGFloat
+    let isActive: Bool
+    @State private var isPressed = false
+    
+    var body: some View {
         configuration.label
-            .foregroundColor(isActive ? .cyan : .white.opacity(configuration.isPressed ? 0.5 : 0.9))
+            .foregroundColor(isActive ? .cyan : (isPressed ? .white : .white.opacity(0.85)))
             .frame(width: size, height: size)
             .background(
                 Circle()
-                    .fill(isActive ? Color.cyan.opacity(0.2) : Color.white.opacity(configuration.isPressed ? 0.05 : 0.1))
-                    .overlay(
-                        Circle()
-                            .stroke(isActive ? Color.cyan.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                    )
+                    .fill(isPressed ? Color.white.opacity(0.4) : (isActive ? Color.cyan.opacity(0.2) : Color.white.opacity(0.1)))
             )
-            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .overlay(
+                Circle()
+                    .stroke(isPressed ? Color.white.opacity(0.7) : Color.white.opacity(0.15), lineWidth: 1)
+            )
+            .scaleEffect(isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.15, dampingFraction: 0.6), value: isPressed)
+            .contentShape(Circle())
+            .onLongPressGesture(minimumDuration: 0.5, pressing: { pressing in
+                isPressed = pressing
+            }, perform: {
+                configuration.trigger()
+            })
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        withAnimation(.spring(response: 0.1, dampingFraction: 0.5)) {
+                            isPressed = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+                                isPressed = false
+                            }
+                        }
+                        configuration.trigger()
+                    }
+            )
     }
 }
 
@@ -943,23 +936,33 @@ struct SearchResultRow: View {
             
             // Text content
             VStack(alignment: .leading, spacing: 4) {
-                // Similarity score for semantic search
-                if result.score > 0 {
-                    HStack(spacing: 4) {
+                // Match type indicator + app name
+                HStack(spacing: 6) {
+                    // Match type icon
+                    Image(systemName: matchTypeIcon)
+                        .font(.system(size: 10))
+                        .foregroundColor(matchTypeColor)
+                    
+                    // Similarity score for semantic search
+                    if result.score > 0 {
                         Text("[\(Int(result.score * 100))%]")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.purple.opacity(0.8))
-                        
-                        if !result.appName.isEmpty {
-                            Text(result.appName)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
-                        }
                     }
-                } else if !result.appName.isEmpty {
-                    Text(result.appName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
+                    
+                    if !result.appName.isEmpty {
+                        Text(result.appName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                
+                // URL if available
+                if let url = result.url, !url.isEmpty {
+                    Text(formatURL(url))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.cyan.opacity(0.7))
+                        .lineLimit(1)
                 }
                 
                 Text(cleanupText(result.text))
@@ -983,6 +986,38 @@ struct SearchResultRow: View {
                 isHovered = hovering
             }
         }
+    }
+    
+    // Match type icon
+    private var matchTypeIcon: String {
+        switch result.matchType {
+        case .url: return "link"
+        case .title: return "textformat"
+        case .clipboard: return "doc.on.clipboard"
+        case .ocr: return "text.viewfinder"
+        }
+    }
+    
+    // Match type color
+    private var matchTypeColor: Color {
+        switch result.matchType {
+        case .url: return .cyan
+        case .title: return .orange
+        case .clipboard: return .green
+        case .ocr: return .white.opacity(0.5)
+        }
+    }
+    
+    // Format URL to show domain
+    private func formatURL(_ url: String) -> String {
+        if let urlObj = URL(string: url), let host = urlObj.host {
+            let path = urlObj.path
+            if path.count > 1 && path.count < 40 {
+                return "\(host)\(path)"
+            }
+            return host
+        }
+        return String(url.prefix(50))
     }
     
     // "8 dec" format - handles both "2025-12-07 20:42:17" and "2025-12-08T01:39:08Z"
@@ -1332,6 +1367,66 @@ struct AppIconView: View {
         
         // No icon found, use fallback
         appIcon = nil
+    }
+}
+
+// MARK: - Native Search TextField (NSViewRepresentable)
+struct SearchTextField: NSViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+    var onSubmit: () -> Void
+    
+    func makeNSView(context: Context) -> NSTextField {
+        let textField = NSTextField()
+        textField.delegate = context.coordinator
+        textField.placeholderString = placeholder
+        textField.font = NSFont.systemFont(ofSize: 20, weight: .medium)
+        textField.textColor = .white
+        textField.backgroundColor = .clear
+        textField.isBordered = false
+        textField.focusRingType = .none
+        textField.drawsBackground = false
+        textField.cell?.sendsActionOnEndEditing = false
+        
+        // Auto-focus when created
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            textField.window?.makeFirstResponder(textField)
+        }
+        
+        return textField
+    }
+    
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+        nsView.placeholderString = placeholder
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: SearchTextField
+        
+        init(_ parent: SearchTextField) {
+            self.parent = parent
+        }
+        
+        func controlTextDidChange(_ notification: Notification) {
+            if let textField = notification.object as? NSTextField {
+                parent.text = textField.stringValue
+            }
+        }
+        
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                parent.onSubmit()
+                return true
+            }
+            return false
+        }
     }
 }
 

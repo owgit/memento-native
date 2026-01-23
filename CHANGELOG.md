@@ -2,6 +2,12 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.1] - 2026-01-23
+
+### Improved
+- Multi-language embeddings (Swedish, German, French, Spanish)
+- Lower similarity threshold for better search recall
+
 ## [1.0.0] - 2024-12-08
 
 ### Added

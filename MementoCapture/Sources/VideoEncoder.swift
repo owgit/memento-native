@@ -40,14 +40,16 @@ class VideoEncoder {
             assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
             
             // Video settings - use H.264 with hardware acceleration
+            // High bitrate for crisp screen text
             let videoSettings: [String: Any] = [
                 AVVideoCodecKey: AVVideoCodecType.h264,
                 AVVideoWidthKey: width,
                 AVVideoHeightKey: height,
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 2_000_000,
+                    AVVideoAverageBitRateKey: 8_000_000,  // 8 Mbps for sharp text
                     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                    AVVideoAllowFrameReorderingKey: false
+                    AVVideoAllowFrameReorderingKey: false,
+                    AVVideoMaxKeyFrameIntervalKey: 1  // Every frame is keyframe for quality
                 ]
             ]
             
