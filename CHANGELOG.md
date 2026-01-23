@@ -2,6 +2,12 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.3] - 2026-01-23
+
+### Added
+- Multi-step onboarding guide with 4 slides
+- Full English/Swedish localization for onboarding
+
 ## [1.0.2] - 2026-01-23
 
 ### Added

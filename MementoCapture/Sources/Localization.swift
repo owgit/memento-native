@@ -90,5 +90,59 @@ enum L {
     static var openSystemSettings: String { isSwedish ? "Öppna Systeminställningar" : "Open System Settings" }
     static var startMemento: String { isSwedish ? "Starta Memento" : "Start Memento" }
     static var buyMeACoffee: String { isSwedish ? "Bjud på en kaffe" : "Buy me a coffee" }
+    
+    // MARK: - Onboarding Steps
+    static var onboardingWelcome: String { isSwedish ? "Välkommen till Memento" : "Welcome to Memento" }
+    static var onboardingFeatures: String { isSwedish ? "Vad kan du göra?" : "What can you do?" }
+    static var onboardingHowItWorks: String { isSwedish ? "Så fungerar det" : "How it works" }
+    static var onboardingPermission: String { isSwedish ? "En sak till..." : "One more thing..." }
+    
+    static var onboardingTagline: String { isSwedish ? "Din personliga skärmhistorik" : "Your personal screen history" }
+    static var onboardingSubtitle: String { 
+        isSwedish 
+            ? "Glöm aldrig vad du såg på skärmen.\nSök i text, bilder och webbsidor."
+            : "Never forget what you saw on screen.\nSearch text, images and web pages."
+    }
+    
+    // Features
+    static var featureSearchAll: String { isSwedish ? "Sök i allt" : "Search everything" }
+    static var featureSearchAllDesc: String { isSwedish ? "Hitta text från vilken skärmdump som helst" : "Find text from any screenshot" }
+    static var featureClipboard: String { isSwedish ? "Clipboard-historik" : "Clipboard history" }
+    static var featureClipboardDesc: String { isSwedish ? "Allt du kopierat sparas sökbart" : "Everything you copy is searchable" }
+    static var featureWeb: String { isSwedish ? "Webb-historik" : "Web history" }
+    static var featureWebDesc: String { isSwedish ? "Hitta webbsidor du besökt med URL & titel" : "Find web pages you visited with URL & title" }
+    static var featureLiveText: String { isSwedish ? "Live Text" : "Live Text" }
+    static var featureLiveTextDesc: String { isSwedish ? "Markera och kopiera text direkt från bilder" : "Select and copy text directly from images" }
+    static var featurePrivate: String { isSwedish ? "100% Privat" : "100% Private" }
+    static var featurePrivateDesc: String { isSwedish ? "Allt sparas lokalt - ingen moln, ingen telemetri" : "Everything stored locally - no cloud, no telemetry" }
+    
+    // How it works
+    static var howCapture: String { isSwedish ? "Memento Capture" : "Memento Capture" }
+    static var howCaptureDesc: String { isSwedish ? "Körs tyst i menyraden och tar skärmdumpar automatiskt" : "Runs quietly in menu bar, captures screenshots automatically" }
+    static var howOCR: String { isSwedish ? "Automatisk OCR" : "Automatic OCR" }
+    static var howOCRDesc: String { isSwedish ? "All text på skärmen extraheras och indexeras" : "All text on screen is extracted and indexed" }
+    static var howTimeline: String { isSwedish ? "Memento Timeline" : "Memento Timeline" }
+    static var howTimelineDesc: String { isSwedish ? "Öppna Timeline-appen för att söka och bläddra" : "Open Timeline app to search and browse" }
+    static var howTip: String { isSwedish ? "Tips!" : "Tip!" }
+    static var howTipDesc: String { isSwedish ? "Tryck ⌘F i Timeline för att söka, ←→ för att navigera" : "Press ⌘F in Timeline to search, ←→ to navigate" }
+    
+    // Permission
+    static var permissionReady: String { isSwedish ? "Redo att köra!" : "Ready to go!" }
+    static var permissionReadyDesc: String { 
+        isSwedish 
+            ? "Du har gett tillåtelse.\nMemento börjar spela in när du stänger detta fönster."
+            : "Permission granted.\nMemento starts recording when you close this window."
+    }
+    static var permissionNeeded: String { isSwedish ? "Skärminspelning krävs" : "Screen Recording Required" }
+    static var permissionNeededDesc: String { 
+        isSwedish 
+            ? "Memento behöver tillgång till skärminspelning för att fungera."
+            : "Memento needs screen recording access to work."
+    }
+    static var permissionAdd: String { isSwedish ? "Lägg till \"Memento Capture\" i listan" : "Add \"Memento Capture\" to the list" }
+    
+    // Navigation
+    static var back: String { isSwedish ? "Tillbaka" : "Back" }
+    static var next: String { isSwedish ? "Nästa" : "Next" }
 }
 
