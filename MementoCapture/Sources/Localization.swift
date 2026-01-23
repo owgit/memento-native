@@ -117,14 +117,14 @@ enum L {
     static var featurePrivateDesc: String { isSwedish ? "Allt sparas lokalt - ingen moln, ingen telemetri" : "Everything stored locally - no cloud, no telemetry" }
     
     // How it works
-    static var howCapture: String { isSwedish ? "Memento Capture" : "Memento Capture" }
-    static var howCaptureDesc: String { isSwedish ? "Körs tyst i menyraden och tar skärmdumpar automatiskt" : "Runs quietly in menu bar, captures screenshots automatically" }
+    static var howCapture: String { isSwedish ? "Starta Capture först!" : "Start Capture first!" }
+    static var howCaptureDesc: String { isSwedish ? "Denna app körs i menyraden och måste vara igång" : "This app runs in menu bar and must be running" }
     static var howOCR: String { isSwedish ? "Automatisk OCR" : "Automatic OCR" }
     static var howOCRDesc: String { isSwedish ? "All text på skärmen extraheras och indexeras" : "All text on screen is extracted and indexed" }
     static var howTimeline: String { isSwedish ? "Memento Timeline" : "Memento Timeline" }
     static var howTimelineDesc: String { isSwedish ? "Öppna Timeline-appen för att söka och bläddra" : "Open Timeline app to search and browse" }
     static var howTip: String { isSwedish ? "Tips!" : "Tip!" }
-    static var howTipDesc: String { isSwedish ? "Tryck ⌘F i Timeline för att söka, ←→ för att navigera" : "Press ⌘F in Timeline to search, ←→ to navigate" }
+    static var howTipDesc: String { isSwedish ? "⌘F = sök, ←→ = navigera, markera text direkt i bilden för att kopiera!" : "⌘F = search, ←→ = navigate, select text directly in image to copy!" }
     
     // Permission
     static var permissionReady: String { isSwedish ? "Redo att köra!" : "Ready to go!" }
