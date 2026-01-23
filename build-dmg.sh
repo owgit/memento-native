@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="1.0.1"
+VERSION="1.0.3"
 DMG_NAME="Memento-Native-${VERSION}"
 DMG_DIR="dist"
 STAGING_DIR="${DMG_DIR}/staging"
@@ -50,9 +50,9 @@ cat > "$CAPTURE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Capture</string>
     <key>CFBundleVersion</key>
-    <string>1.0.1</string>
+    <string>1.0.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.1</string>
+    <string>1.0.3</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -94,9 +94,9 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Timeline</string>
     <key>CFBundleVersion</key>
-    <string>1.0.1</string>
+    <string>1.0.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.1</string>
+    <string>1.0.3</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>

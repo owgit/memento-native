@@ -2,6 +2,11 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.2] - 2026-01-23
+
+### Added
+- Skip capture when screen locked or screensaver active
+
 ## [1.0.1] - 2026-01-23
 
 ### Improved

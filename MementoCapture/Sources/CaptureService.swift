@@ -90,6 +90,12 @@ class CaptureService {
             return
         }
         
+        // Skip capture when screen is locked or screensaver is active
+        if isScreenLocked() {
+            print("🔒 Skipping capture - Screen locked or screensaver active")
+            return
+        }
+        
         // Get browser URL and tab title
         let browserInfo = BrowserCapture.getCurrentBrowserInfo()
         
@@ -195,6 +201,29 @@ class CaptureService {
         }
         // Strip "public.app-category." prefix for cleaner storage
         return category.replacingOccurrences(of: "public.app-category.", with: "")
+    }
+    
+    /// Check if screen is locked or screensaver is active
+    private func isScreenLocked() -> Bool {
+        // Check session dictionary for screen lock state
+        if let sessionDict = CGSessionCopyCurrentDictionary() as? [String: Any] {
+            // CGSSessionScreenIsLocked = true when locked
+            if let isLocked = sessionDict["CGSSessionScreenIsLocked"] as? Bool, isLocked {
+                return true
+            }
+            // kCGSSessionOnConsoleKey = false when switched user or locked
+            if let onConsole = sessionDict["kCGSSessionOnConsoleKey"] as? Bool, !onConsole {
+                return true
+            }
+        }
+        
+        // Check if ScreenSaverEngine is running
+        let runningApps = NSWorkspace.shared.runningApplications
+        if runningApps.contains(where: { $0.bundleIdentifier == "com.apple.ScreenSaver.Engine" }) {
+            return true
+        }
+        
+        return false
     }
     
     private func imageDifference(_ img1: CGImage, _ img2: CGImage) -> Double {
