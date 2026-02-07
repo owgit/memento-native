@@ -65,6 +65,8 @@ struct ContentView: View {
     @State private var lastFrameLoadTime: Date = .distantPast
     @State private var eventMonitors: [Any] = []  // Store event monitors to prevent leak
     @State private var searchDebounceTask: Task<Void, Never>?
+    @State private var selectedSearchResultIndex: Int = 0
+    @State private var openingSearchResultFrameId: Int?
     
     var body: some View {
         ZStack {
@@ -176,10 +178,17 @@ struct ContentView: View {
         }
         .onKeyPress(.escape) {
             if manager.isSearching {
-                withAnimation { manager.isSearching = false }
+                closeSearchOverlay()
                 return .handled
             }
             return .ignored
+        }
+        .onChange(of: manager.searchResults.count) { _, newCount in
+            if newCount == 0 {
+                selectedSearchResultIndex = 0
+            } else {
+                selectedSearchResultIndex = min(selectedSearchResultIndex, newCount - 1)
+            }
         }
         .onAppear { 
             setupKeyHandling()
@@ -304,7 +313,7 @@ struct ContentView: View {
                             // Ensure window is key and active
                             NSApplication.shared.activate(ignoringOtherApps: true)
                             NSApplication.shared.keyWindow?.makeKey()
-                            withAnimation { manager.isSearching = true }
+                            openSearchOverlay()
                         }) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 13))
@@ -473,9 +482,7 @@ struct ContentView: View {
             Color.black.opacity(0.6)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        manager.isSearching = false
-                    }
+                    closeSearchOverlay()
                 }
             
             // Search panel
@@ -515,6 +522,10 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     
                     Spacer()
+
+                    Text(L.searchHintShortcuts)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -530,16 +541,19 @@ struct ContentView: View {
                         text: $manager.searchQuery,
                         placeholder: manager.useSemanticSearch ? L.semanticPlaceholder : L.searchPlaceholder,
                         onSubmit: {
-                            if manager.useSemanticSearch {
-                                manager.semanticSearch(manager.searchQuery)
-                            } else {
-                                manager.search(manager.searchQuery)
-                            }
+                            openSelectedSearchResult()
+                        },
+                        onMoveUp: {
+                            moveSearchSelection(-1)
+                        },
+                        onMoveDown: {
+                            moveSearchSelection(1)
                         }
                     )
                     .frame(height: 30)
                     .onChange(of: manager.searchQuery) { _, newValue in
                         searchDebounceTask?.cancel()
+                        selectedSearchResultIndex = 0
                         
                         if newValue.count >= 2 {
                             searchDebounceTask = Task {
@@ -555,6 +569,12 @@ struct ContentView: View {
                         } else {
                             manager.searchResults = []
                         }
+                    }
+
+                    if manager.isSearchRunning {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white.opacity(0.7))
                     }
                     
                     if !manager.searchQuery.isEmpty {
@@ -585,11 +605,11 @@ struct ContentView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
 
-                if manager.isPreparingSearchHistory {
+                if manager.isPreparingSearchHistory || manager.isSearchRunning {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text(L.loadingSearchHistory)
+                        Text(manager.isPreparingSearchHistory ? L.loadingSearchHistory : L.searching)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.75))
                         Spacer()
@@ -605,23 +625,24 @@ struct ContentView: View {
                 if !manager.searchResults.isEmpty {
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(manager.searchResults) { result in
-                                SearchResultRow(result: result)
+                            ForEach(Array(manager.searchResults.enumerated()), id: \.element.id) { index, result in
+                                SearchResultRow(
+                                    result: result,
+                                    isSelected: index == selectedSearchResultIndex,
+                                    isOpening: openingSearchResultFrameId == result.frameId
+                                )
                                     .onTapGesture {
-                                        manager.jumpToFrameId(result.frameId)
-                                        withAnimation {
-                                            manager.isSearching = false
-                                        }
+                                        openSearchResult(result, selectedIndex: index)
                                     }
                             }
                         }
                     }
                     .frame(maxHeight: 400)
-                } else if manager.isPreparingSearchHistory {
+                } else if manager.isPreparingSearchHistory || (manager.isSearchRunning && manager.searchQuery.count >= 2) {
                     VStack(spacing: 12) {
                         ProgressView()
                             .controlSize(.small)
-                        Text(L.loadingSearchHistory)
+                        Text(manager.isPreparingSearchHistory ? L.loadingSearchHistory : L.searching)
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -648,7 +669,7 @@ struct ContentView: View {
                     .frame(height: 150)
                 }
             }
-            .frame(width: 580)
+            .frame(width: 620)
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.98)))
@@ -780,6 +801,50 @@ struct ContentView: View {
             }
         }
     }
+
+    private func openSearchOverlay() {
+        openingSearchResultFrameId = nil
+        selectedSearchResultIndex = 0
+        withAnimation { manager.isSearching = true }
+    }
+
+    private func closeSearchOverlay() {
+        searchDebounceTask?.cancel()
+        openingSearchResultFrameId = nil
+        withAnimation(.easeOut(duration: 0.2)) {
+            manager.isSearching = false
+        }
+    }
+
+    private func moveSearchSelection(_ delta: Int) {
+        guard !manager.searchResults.isEmpty else { return }
+        let next = selectedSearchResultIndex + delta
+        selectedSearchResultIndex = min(max(0, next), manager.searchResults.count - 1)
+    }
+
+    private func openSelectedSearchResult() {
+        guard selectedSearchResultIndex >= 0, selectedSearchResultIndex < manager.searchResults.count else {
+            if manager.useSemanticSearch {
+                manager.semanticSearch(manager.searchQuery)
+            } else {
+                manager.search(manager.searchQuery)
+            }
+            return
+        }
+        let result = manager.searchResults[selectedSearchResultIndex]
+        openSearchResult(result, selectedIndex: selectedSearchResultIndex)
+    }
+
+    private func openSearchResult(_ result: TimelineManager.SearchResult, selectedIndex: Int) {
+        selectedSearchResultIndex = selectedIndex
+        openingSearchResultFrameId = result.frameId
+        manager.jumpToFrameId(result.frameId) { success in
+            openingSearchResultFrameId = nil
+            if success {
+                closeSearchOverlay()
+            }
+        }
+    }
     
     private func setupKeyHandling() {
         // Only setup once - check if already setup
@@ -880,6 +945,8 @@ struct ControlButtonView: View {
 // MARK: - Search Result Row
 struct SearchResultRow: View {
     let result: TimelineManager.SearchResult
+    var isSelected: Bool = false
+    var isOpening: Bool = false
     @State private var isHovered = false
     
     var body: some View {
@@ -939,14 +1006,24 @@ struct SearchResultRow: View {
             
             Spacer()
             
-            // Arrow
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(isHovered ? 0.6 : 0.2))
+            if isOpening {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white.opacity(0.8))
+            } else {
+                // Arrow
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(isHovered || isSelected ? 0.6 : 0.2))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(isHovered ? Color.white.opacity(0.06) : Color.clear)
+        .background(isSelected ? Color.blue.opacity(0.20) : (isHovered ? Color.white.opacity(0.06) : Color.clear))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.blue.opacity(0.55) : Color.clear, lineWidth: 1)
+        )
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
                 isHovered = hovering
@@ -1377,6 +1454,8 @@ struct SearchTextField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var onSubmit: () -> Void
+    var onMoveUp: () -> Void = {}
+    var onMoveDown: () -> Void = {}
     
     func makeNSView(context: Context) -> NSTextField {
         let textField = NSTextField()
@@ -1425,6 +1504,14 @@ struct SearchTextField: NSViewRepresentable {
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 parent.onSubmit()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.moveUp(_:)) {
+                parent.onMoveUp()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.moveDown(_:)) {
+                parent.onMoveDown()
                 return true
             }
             return false

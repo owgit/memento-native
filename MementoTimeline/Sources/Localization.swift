@@ -39,6 +39,8 @@ enum L {
     static var semantic: String { isSwedish ? "Semantisk" : "Semantic" }
     static var searchPlaceholder: String { isSwedish ? "Sök i din tidslinje..." : "Search your timeline..." }
     static var semanticPlaceholder: String { isSwedish ? "Beskriv vad du letar efter..." : "Describe what you're looking for..." }
+    static var searching: String { isSwedish ? "Söker..." : "Searching..." }
+    static var searchHintShortcuts: String { isSwedish ? "↑↓ välj, Enter öppna, Esc stäng" : "↑↓ select, Enter open, Esc close" }
     static func noResults(_ query: String) -> String {
         isSwedish ? "Inga resultat för \"\(query)\"" : "No results for \"\(query)\""
     }

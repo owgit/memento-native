@@ -20,6 +20,7 @@ class TimelineManager: ObservableObject {
     @Published var groupedByDay: [String: [TimelineSegment]] = [:]
     @Published var useSemanticSearch: Bool = false
     @Published var isPreparingSearchHistory: Bool = false
+    @Published var isSearchRunning: Bool = false
     
     struct TextBlock: Identifiable {
         let id = UUID()
@@ -280,14 +281,16 @@ class TimelineManager: ObservableObject {
     }
     
     // Jump directly to a frame_id (from search)
-    func jumpToFrameId(_ frameId: Int) {
+    func jumpToFrameId(_ frameId: Int, completion: ((Bool) -> Void)? = nil) {
         if let index = getIndexForFrameId(frameId) {
             jumpToFrame(index)
+            completion?(true)
             return
         }
 
         guard loadedFromDate > Date.distantPast else {
             log("⚠️ Could not find display index for frame_id \(frameId)")
+            completion?(false)
             return
         }
 
@@ -302,8 +305,10 @@ class TimelineManager: ObservableObject {
 
             if let index = getIndexForFrameId(frameId) {
                 jumpToFrame(index)
+                completion?(true)
             } else {
                 log("⚠️ Could not find display index for frame_id \(frameId) after loading full history")
+                completion?(false)
             }
         }
     }
@@ -662,16 +667,23 @@ class TimelineManager: ObservableObject {
     }
     
     private var searchTask: Task<Void, Never>?
-    
+    private var latestSearchToken = UUID()
+
     func search(_ query: String) {
         // Cancel previous search
         searchTask?.cancel()
+        semanticSearchTask?.cancel()
+        let token = UUID()
+        latestSearchToken = token
         
         guard !query.isEmpty else {
             searchResults = []
             isPreparingSearchHistory = false
+            isSearchRunning = false
             return
         }
+
+        isSearchRunning = true
         
         // Run search on background thread
         searchTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -679,7 +691,9 @@ class TimelineManager: ObservableObject {
             let results = await self.performSearch(query)
             
             await MainActor.run {
+                guard self.latestSearchToken == token else { return }
                 self.searchResults = results
+                self.isSearchRunning = false
             }
         }
     }
@@ -806,22 +820,30 @@ class TimelineManager: ObservableObject {
     private let embeddingService = EmbeddingService()
     
     private var semanticSearchTask: Task<Void, Never>?
-    
+
     func semanticSearch(_ query: String) {
         semanticSearchTask?.cancel()
+        searchTask?.cancel()
+        let token = UUID()
+        latestSearchToken = token
         
         guard !query.isEmpty else {
             searchResults = []
             isPreparingSearchHistory = false
+            isSearchRunning = false
             return
         }
+
+        isSearchRunning = true
         
         semanticSearchTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
             let results = await self.performSemanticSearch(query)
             
             await MainActor.run {
+                guard self.latestSearchToken == token else { return }
                 self.searchResults = results
+                self.isSearchRunning = false
             }
         }
     }
