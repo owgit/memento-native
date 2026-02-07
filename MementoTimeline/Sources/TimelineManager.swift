@@ -229,6 +229,8 @@ class TimelineManager: ObservableObject {
     func loadMoreHistory() {
         guard !isLoadingMore else { return }
         isLoadingMore = true
+
+        let preservedFrameId = getFrameIdForIndex(currentFrameIndex)
         
         let newFromDate = Calendar.current.date(byAdding: .hour, value: -expandHours, to: loadedFromDate) ?? loadedFromDate
         print("📅 Expanding history: \(loadedFromDate) -> \(newFromDate)")
@@ -237,6 +239,10 @@ class TimelineManager: ObservableObject {
             loadedFromDate = newFromDate
             loadVideoFiles(from: loadedFromDate, to: loadedToDate)
             loadTimelineMetadata()
+            if preservedFrameId > 0, let restoredIndex = getIndexForFrameId(preservedFrameId) {
+                currentFrameIndex = restoredIndex
+                loadMetadata(for: restoredIndex)
+            }
             hasLoadedAllHistoryForSearch = loadedFromDate == Date.distantPast
             isLoadingMore = false
         }
@@ -246,12 +252,17 @@ class TimelineManager: ObservableObject {
     func loadAllHistory() {
         guard !isLoadingMore else { return }
         isLoadingMore = true
+        let preservedFrameId = getFrameIdForIndex(currentFrameIndex)
         print("📅 Loading all history for search...")
         
         Task { @MainActor in
             loadedFromDate = Date.distantPast
             loadVideoFiles(from: nil, to: nil)
             loadTimelineMetadata()
+            if preservedFrameId > 0, let restoredIndex = getIndexForFrameId(preservedFrameId) {
+                currentFrameIndex = restoredIndex
+                loadMetadata(for: restoredIndex)
+            }
             hasLoadedAllHistoryForSearch = true
             isLoadingMore = false
         }
@@ -442,8 +453,7 @@ class TimelineManager: ObservableObject {
     }
     
     func getColorForCurrentFrame() -> Color {
-        let frameId = getFrameIdForIndex(currentFrameIndex)
-        return timelineSegments.first(where: { $0.id == frameId })?.color ?? Self.appColors["default"]!
+        return getSegmentForIndex(currentFrameIndex)?.color ?? Self.appColors["default"]!
     }
     
     func getSegmentForIndex(_ index: Int) -> TimelineSegment? {

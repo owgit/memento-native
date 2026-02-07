@@ -357,122 +357,222 @@ struct ContentView: View {
     
     // MARK: - Timeline Scrubber with App Colors
     private var timelineScrubber: some View {
-        GeometryReader { geometry in
-            let displayIndex = isDragging ? dragFrameIndex : manager.currentFrameIndex
-            let progress = manager.totalFrames > 0
-                ? CGFloat(displayIndex) / CGFloat(max(1, manager.totalFrames - 1))
-                : 0
-            
-            ZStack(alignment: .leading) {
-                // Simplified background - single gradient instead of many rectangles
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3), Color.cyan.opacity(0.3)],
-                            startPoint: .leading,
-                            endPoint: .trailing
+        VStack(spacing: 6) {
+            GeometryReader { geometry in
+                let maxIndex = max(0, manager.totalFrames - 1)
+                let activeIndex = isDragging ? dragFrameIndex : manager.currentFrameIndex
+                let clampedActiveIndex = min(max(0, activeIndex), maxIndex)
+                let progress = manager.totalFrames > 1
+                    ? CGFloat(clampedActiveIndex) / CGFloat(maxIndex)
+                    : 0
+                let currentX = geometry.size.width * progress
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.purple.opacity(0.28), Color.blue.opacity(0.30), Color.cyan.opacity(0.28)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .frame(height: 12)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
-                
-                // Progress overlay
-                Capsule()
-                    .fill(Color.white.opacity(0.3))
-                    .frame(width: max(6, geometry.size.width * progress), height: 12)
-                
-                // Hover preview with time
-                if isHoveringTimeline && !isDragging {
-                    let hoverProgress = mouseLocation.x / geometry.size.width
-                    let hoverIndex = Int(hoverProgress * CGFloat(manager.totalFrames - 1))
-                    
-                    VStack(spacing: 4) {
+                        .frame(height: 14)
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+
+                    Capsule()
+                        .fill(Color.white.opacity(0.28))
+                        .frame(width: max(7, geometry.size.width * progress), height: 14)
+
+                    if (isHoveringTimeline || isDragging), manager.totalFrames > 0 {
+                        let width = max(1, geometry.size.width)
+                        let hoverProgress = max(0, min(1, mouseLocation.x / width))
+                        let hoverIndex = isDragging
+                            ? clampedActiveIndex
+                            : Int(round(hoverProgress * CGFloat(maxIndex)))
+                        let markerX = isDragging ? currentX : geometry.size.width * hoverProgress
+                        let minX: CGFloat = 46
+                        let maxX = max(minX, geometry.size.width - minX)
+                        let clampedMarkerX = min(max(markerX, minX), maxX)
+
                         if let segment = manager.getSegmentForIndex(hoverIndex) {
-                            Text(segment.timeString.isEmpty ? "--:--" : formatTime(segment.timeString))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(segment.color.opacity(0.9))
-                                )
-                            
-                            Text(segment.appName)
-                                .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.7))
+                            VStack(spacing: 4) {
+                                Text(segment.timeString.isEmpty ? "--:--" : formatTime(segment.timeString))
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(segment.color.opacity(0.90))
+                                    )
+
+                                Text(segment.appName)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .lineLimit(1)
+                            }
+                            .offset(x: clampedMarkerX - 40, y: -47)
                         }
+
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.white.opacity(0.9))
+                            .frame(width: 3, height: 22)
+                            .offset(x: clampedMarkerX - 1.5, y: -1)
                     }
-                    .offset(x: geometry.size.width * hoverProgress - 40, y: -45)
-                    
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.white)
-                        .frame(width: 3, height: 20)
-                        .offset(x: geometry.size.width * hoverProgress - 1.5, y: 0)
+
+                    ZStack {
+                        Circle()
+                            .fill(manager.getColorForCurrentFrame())
+                            .frame(width: 18, height: 18)
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 10, height: 10)
+                    }
+                    .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+                    .offset(x: currentX - 9)
                 }
-                
-                // Current position handle
-                ZStack {
-                    Circle()
-                        .fill(manager.getColorForCurrentFrame())
-                        .frame(width: 18, height: 18)
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 10, height: 10)
+                .frame(height: 24)
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location):
+                        isHoveringTimeline = true
+                        mouseLocation = location
+                    case .ended:
+                        isHoveringTimeline = false
+                    }
                 }
-                .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
-                .offset(x: geometry.size.width * progress - 9)
-            }
-            .frame(height: 20)
-            .contentShape(Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    isHoveringTimeline = true
-                    mouseLocation = location
-                case .ended:
-                    isHoveringTimeline = false
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        isDragging = true
-                        let prog = max(0, min(1, value.location.x / geometry.size.width))
-                        dragFrameIndex = Int(prog * CGFloat(max(1, manager.totalFrames - 1)))
-                        
-                        // Throttle: only load frame every 150ms during drag
-                        let now = Date()
-                        if now.timeIntervalSince(lastFrameLoadTime) > 0.15 {
-                            lastFrameLoadTime = now
-                            manager.jumpToFrame(dragFrameIndex)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDragging = true
+                            mouseLocation = value.location
+                            let width = max(1, geometry.size.width)
+                            let prog = max(0, min(1, value.location.x / width))
+                            dragFrameIndex = Int(prog * CGFloat(maxIndex))
+
+                            // Throttle: only load frame every 150ms during drag
+                            let now = Date()
+                            if now.timeIntervalSince(lastFrameLoadTime) > 0.15 {
+                                lastFrameLoadTime = now
+                                manager.jumpToFrame(dragFrameIndex)
+                            }
                         }
-                    }
-                    .onEnded { value in
-                        isDragging = false
-                        let prog = max(0, min(1, value.location.x / geometry.size.width))
-                        let finalIndex = Int(prog * CGFloat(max(1, manager.totalFrames - 1)))
-                        manager.jumpToFrame(finalIndex)
-                    }
-            )
+                        .onEnded { value in
+                            isDragging = false
+                            let width = max(1, geometry.size.width)
+                            let prog = max(0, min(1, value.location.x / width))
+                            let finalIndex = Int(prog * CGFloat(maxIndex))
+                            manager.jumpToFrame(finalIndex)
+                        }
+                )
+            }
+            .frame(height: 24)
+
+            HStack(spacing: 12) {
+                Text(timelineStartLabel)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(timelineProgressLabel)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Text(timelineEndLabel)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundColor(.white.opacity(0.55))
+
+            HStack(spacing: 8) {
+                if manager.isLoadingMore {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white.opacity(0.8))
+                } else {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+
+                Text(historyLoadStatusText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+
+                if !manager.isLoadingMore {
+                    Text(L.olderHistoryHintShort)
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.white.opacity(0.6))
         }
-        .frame(height: 20)
     }
     
     private func formatTime(_ timeString: String) -> String {
-        // Extract just HH:mm from "2024-01-15 14:30:25"
-        let parts = timeString.split(separator: " ")
+        // Extract HH:mm from both ISO and SQL-like timestamp formats.
+        let clean = timeString.replacingOccurrences(of: "\"", with: "")
+        let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
         if parts.count >= 2 {
-            let timePart = String(parts[1])
+            let timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
             let timeComponents = timePart.split(separator: ":")
             if timeComponents.count >= 2 {
                 return "\(timeComponents[0]):\(timeComponents[1])"
             }
+            return timePart
         }
-        return timeString
+        return clean
+    }
+
+    private var timelineStartLabel: String {
+        timelineLabelForIndex(0)
+    }
+
+    private var timelineEndLabel: String {
+        guard manager.totalFrames > 0 else { return "—" }
+        return timelineLabelForIndex(manager.totalFrames - 1)
+    }
+
+    private var timelineProgressLabel: String {
+        guard manager.totalFrames > 0 else { return "0 / 0" }
+        let position = min(max(1, manager.currentFrameIndex + 1), manager.totalFrames)
+        let percent = Int((Double(position) / Double(max(1, manager.totalFrames))) * 100)
+        return "\(position) / \(manager.totalFrames) (\(percent)%)"
+    }
+
+    private func timelineLabelForIndex(_ index: Int) -> String {
+        guard manager.totalFrames > 0, let segment = manager.getSegmentForIndex(index) else { return "—" }
+        return formatTimeDisplay(segment.timeString)
+    }
+
+    private var historyLoadStatusText: String {
+        guard let first = manager.timelineSegments.first?.time,
+              let last = manager.timelineSegments.last?.time else {
+            return manager.isLoadingMore ? L.loadingOlderHistory : "\(L.loadedPrefix): —"
+        }
+
+        if manager.isLoadingMore {
+            return L.loadingOlderHistory
+        }
+
+        let span = max(0, last.timeIntervalSince(first))
+        return "\(L.loadedPrefix): \(formatLoadedSpan(span))"
+    }
+
+    private func formatLoadedSpan(_ interval: TimeInterval) -> String {
+        let totalMinutes = max(1, Int(interval / 60))
+        if totalMinutes < 120 {
+            return "\(totalMinutes)m"
+        }
+
+        let totalHours = totalMinutes / 60
+        if totalHours < 72 {
+            return "\(totalHours)h"
+        }
+
+        let days = totalHours / 24
+        return "\(days)d"
     }
     
     // MARK: - Search Overlay

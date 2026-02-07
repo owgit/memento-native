@@ -23,7 +23,7 @@ struct MementoTimelineApp: App {
                 Button(L.menuFullscreen) {
                     toggleFullscreen()
                 }
-                .keyboardShortcut("f", modifiers: [])
+                .keyboardShortcut("f", modifiers: [.command, .control])
                 
                 Divider()
                 
