@@ -22,17 +22,16 @@ class CaptureService {
     // Components
     private let screenshotCapture = ScreenshotCapture()
     private let ocrEngine = VisionOCR()
-    private let videoEncoder: VideoEncoder
-    private let database: Database
+    private var videoEncoder: VideoEncoder
+    private var database: Database
     private let embeddingService = EmbeddingService()
     
     // Paths
-    let cachePath: URL
+    private(set) var cachePath: URL
     
     private init() {
-        // Setup cache path
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        cachePath = home.appendingPathComponent(".cache/memento")
+        // Setup cache path from settings
+        cachePath = Settings.shared.storageURL
         
         // Create cache directory
         try? FileManager.default.createDirectory(at: cachePath, withIntermediateDirectories: true)
@@ -55,6 +54,8 @@ class CaptureService {
         print("▶️  Starting capture service...")
         print("   Interval: \(captureInterval)s")
         print("   Resolution: Auto-detect")
+
+        applyRetentionPolicyIfNeeded()
         
         // Start capture timer
         timer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { [weak self] _ in
@@ -75,6 +76,41 @@ class CaptureService {
         timer = nil
         previousImage = nil  // Release memory
         videoEncoder.finalize()
+    }
+
+    func switchStoragePath(to newPath: URL) throws -> StorageMigrator.Result {
+        let normalizedPath = newPath.standardizedFileURL
+        let currentPath = cachePath.standardizedFileURL
+        guard normalizedPath.path != currentPath.path else { return StorageMigrator.Result() }
+
+        let wasRunning = timer != nil
+        if wasRunning {
+            stop()
+        }
+
+        // Close DB before migrating files so WAL/shm can move cleanly.
+        database.close()
+
+        try FileManager.default.createDirectory(at: normalizedPath, withIntermediateDirectories: true)
+        let migrationResult = try StorageMigrator.migrateDirectory(from: currentPath, to: normalizedPath)
+
+        cachePath = normalizedPath
+        database = Database(path: cachePath.appendingPathComponent("memento.db").path)
+        frameCount = database.getMaxFrameId() + 1
+
+        videoEncoder = VideoEncoder(outputDirectory: cachePath, framesPerVideo: framesPerVideo)
+        videoEncoder.startNewVideo(index: frameCount)
+
+        print("📦 Storage migrated to: \(cachePath.path)")
+        if migrationResult.movedItems > 0 || migrationResult.copiedItems > 0 || migrationResult.conflictRenames > 0 {
+            print("   moved: \(migrationResult.movedItems), copied: \(migrationResult.copiedItems), renamed conflicts: \(migrationResult.conflictRenames), skipped: \(migrationResult.skippedItems)")
+        }
+
+        if wasRunning {
+            start()
+        }
+
+        return migrationResult
     }
     
     private func captureFrame() async {
@@ -255,6 +291,44 @@ class CaptureService {
         }
         
         return diffSum / Double(samples * 255)
+    }
+
+    private func applyRetentionPolicyIfNeeded() {
+        let daysToKeep = Settings.shared.retentionDays
+        guard daysToKeep > 0 && daysToKeep < 9999 else { return }
+
+        let defaults = UserDefaults.standard
+        let lastCleanupKey = "lastRetentionCleanupAt"
+        let minimumInterval: TimeInterval = 12 * 60 * 60
+        let now = Date()
+
+        if let lastCleanup = defaults.object(forKey: lastCleanupKey) as? Date,
+           now.timeIntervalSince(lastCleanup) < minimumInterval {
+            return
+        }
+        defaults.set(now, forKey: lastCleanupKey)
+
+        guard let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: now) else {
+            return
+        }
+        let cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
+        let dbPath = cachePath.appendingPathComponent("memento.db").path
+        let framesPerVideo = self.framesPerVideo
+        let cachePath = self.cachePath
+
+        Task.detached(priority: .utility) {
+            let result = StorageCleaner.cleanup(
+                dbPath: dbPath,
+                cachePath: cachePath,
+                cutoffISO8601: cutoffString,
+                deleteAll: false,
+                framesPerVideo: framesPerVideo
+            )
+
+            if result.deletedFrames > 0 || result.deletedVideos > 0 {
+                print("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
+            }
+        }
     }
 }
 

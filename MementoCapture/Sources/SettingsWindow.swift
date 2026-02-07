@@ -149,6 +149,20 @@ struct SettingsView: View {
             // System Section
             Section {
                 Toggle(L.autoStart, isOn: $settings.autoStart)
+                
+                Button(action: {
+                    PermissionGuideController.shared.show()
+                }) {
+                    HStack {
+                        Image(systemName: "wand.and.stars")
+                        Text(L.fixPermissionsAfterUpdate)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
             } header: {
                 Label(L.system, systemImage: "gearshape")
                     .font(.headline)
@@ -194,7 +208,28 @@ struct SettingsView: View {
         panel.directoryURL = URL(fileURLWithPath: settings.storagePath)
         
         if panel.runModal() == .OK, let url = panel.url {
-            settings.storagePath = url.path
+            do {
+                let result = try settings.updateStoragePath(url.path)
+                let alert = NSAlert()
+                alert.messageText = L.storageMigrationDone
+                alert.informativeText = L.storageMigrationSummary(
+                    (settings.storagePath as NSString).abbreviatingWithTildeInPath,
+                    result.movedItems,
+                    result.copiedItems,
+                    result.conflictRenames,
+                    result.skippedItems
+                )
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: L.ok)
+                alert.runModal()
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = L.storageMigrationFailed
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: L.ok)
+                alert.runModal()
+            }
         }
     }
     
@@ -235,8 +270,31 @@ private extension L {
     static var storageLocation: String { isSwedish ? "Lagringsplats" : "Storage location" }
     static var change: String { isSwedish ? "Ändra" : "Change" }
     static var currentUsage: String { isSwedish ? "Använt utrymme" : "Current usage" }
+    static var storageMigrationDone: String { isSwedish ? "Migrering klar" : "Migration complete" }
+    static func storageMigrationSummary(_ path: String, _ moved: Int, _ copied: Int, _ renamed: Int, _ skipped: Int) -> String {
+        if isSwedish {
+            return """
+            Ny plats: \(path)
+
+            Flyttade: \(moved)
+            Kopierade: \(copied)
+            Konflikt-omdöpta: \(renamed)
+            Skippade: \(skipped)
+            """
+        }
+
+        return """
+        New location: \(path)
+
+        Moved: \(moved)
+        Copied: \(copied)
+        Conflict-renamed: \(renamed)
+        Skipped: \(skipped)
+        """
+    }
+    static var storageMigrationFailed: String { isSwedish ? "Migrering misslyckades" : "Migration failed" }
     static var system: String { isSwedish ? "System" : "System" }
     static var autoStart: String { isSwedish ? "Starta vid inloggning" : "Start at login" }
+    static var fixPermissionsAfterUpdate: String { isSwedish ? "Fixa behörighet efter uppdatering" : "Fix permissions after update" }
     static var support: String { isSwedish ? "Stöd" : "Support" }
 }
-

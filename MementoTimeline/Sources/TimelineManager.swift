@@ -19,6 +19,7 @@ class TimelineManager: ObservableObject {
     @Published var timelineSegments: [TimelineSegment] = []
     @Published var groupedByDay: [String: [TimelineSegment]] = [:]
     @Published var useSemanticSearch: Bool = false
+    @Published var isPreparingSearchHistory: Bool = false
     
     struct TextBlock: Identifiable {
         let id = UUID()
@@ -34,6 +35,8 @@ class TimelineManager: ObservableObject {
     private var videoFiles: [Int: URL] = [:]  // index -> URL
     private var videoIds: [Int] = []  // ordered list of video IDs (for frame_id lookup)
     private let framesPerVideo = 5 // FPS * SECONDS_PER_REC = 0.5 * 10
+    private let textSearchLimit = 500
+    private let metadataSearchLimit = 200
     
     struct SearchResult: Identifiable {
         let id = UUID()
@@ -119,6 +122,7 @@ class TimelineManager: ObservableObject {
     private let initialLoadHours: Int = 12  // Last 12 hours on startup
     private let expandHours: Int = 24       // Load 24h more when scrolling back
     @Published var isLoadingMore: Bool = false
+    private var hasLoadedAllHistoryForSearch: Bool = false
     
     // Generate a consistent color for a new app based on its name
     static func generateColorForApp(_ appName: String) -> Color {
@@ -140,9 +144,9 @@ class TimelineManager: ObservableObject {
     }
     
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        cachePath = home.appendingPathComponent(".cache/memento").path
-        dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
+        let storagePath = Self.resolveStoragePath()
+        cachePath = storagePath
+        dbPath = URL(fileURLWithPath: storagePath).appendingPathComponent("memento.db").path
         
         // Initial load: only last 24 hours for fast startup
         loadedToDate = Date()
@@ -156,6 +160,31 @@ class TimelineManager: ObservableObject {
             currentFrameIndex = safeIndex
             loadFrame(at: currentFrameIndex)
         }
+    }
+
+    private static func resolveStoragePath() -> String {
+        let defaultPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/memento").path
+
+        // Prefer Capture app settings domain so both apps stay aligned.
+        if let captureDefaults = UserDefaults(suiteName: "com.memento.capture"),
+           let path = captureDefaults.string(forKey: "storagePath"),
+           !path.isEmpty {
+            return path
+        }
+
+        if let captureDomain = UserDefaults.standard.persistentDomain(forName: "com.memento.capture"),
+           let path = captureDomain["storagePath"] as? String,
+           !path.isEmpty {
+            return path
+        }
+
+        if let path = UserDefaults.standard.string(forKey: "storagePath"),
+           !path.isEmpty {
+            return path
+        }
+
+        return defaultPath
     }
     
     private func loadVideoFiles(from startDate: Date? = nil, to endDate: Date? = nil) {
@@ -207,6 +236,7 @@ class TimelineManager: ObservableObject {
             loadedFromDate = newFromDate
             loadVideoFiles(from: loadedFromDate, to: loadedToDate)
             loadTimelineMetadata()
+            hasLoadedAllHistoryForSearch = loadedFromDate == Date.distantPast
             isLoadingMore = false
         }
     }
@@ -221,6 +251,7 @@ class TimelineManager: ObservableObject {
             loadedFromDate = Date.distantPast
             loadVideoFiles(from: nil, to: nil)
             loadTimelineMetadata()
+            hasLoadedAllHistoryForSearch = true
             isLoadingMore = false
         }
     }
@@ -252,8 +283,28 @@ class TimelineManager: ObservableObject {
     func jumpToFrameId(_ frameId: Int) {
         if let index = getIndexForFrameId(frameId) {
             jumpToFrame(index)
-        } else {
+            return
+        }
+
+        guard loadedFromDate > Date.distantPast else {
             log("⚠️ Could not find display index for frame_id \(frameId)")
+            return
+        }
+
+        // Search can return old frames outside the currently loaded range.
+        log("📅 Frame \(frameId) not loaded yet, loading full history...")
+        loadAllHistory()
+
+        Task { @MainActor in
+            while isLoadingMore {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+
+            if let index = getIndexForFrameId(frameId) {
+                jumpToFrame(index)
+            } else {
+                log("⚠️ Could not find display index for frame_id \(frameId) after loading full history")
+            }
         }
     }
     
@@ -422,9 +473,15 @@ class TimelineManager: ObservableObject {
             
             // Calculate time for the specific frame
             let duration = try? await asset.load(.duration)
-            let totalSeconds = duration?.seconds ?? 10.0
-            let timePerFrame = totalSeconds / Double(framesPerVideo)
-            let targetTime = CMTime(seconds: Double(frameInVideo) * timePerFrame, preferredTimescale: 600)
+            let totalSeconds = max(0, duration?.seconds ?? 0)
+            let framePositionDenominator = max(1, framesPerVideo - 1)
+            let proportionalSeconds = totalSeconds > 0
+                ? (Double(frameInVideo) / Double(framePositionDenominator)) * totalSeconds
+                : Double(frameInVideo) * 2.0
+            let clampedSeconds = totalSeconds > 0
+                ? min(max(0, proportionalSeconds), totalSeconds)
+                : max(0, proportionalSeconds)
+            let targetTime = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
             
             do {
                 let (cgImage, _) = try await generator.image(at: targetTime)
@@ -612,6 +669,7 @@ class TimelineManager: ObservableObject {
         
         guard !query.isEmpty else {
             searchResults = []
+            isPreparingSearchHistory = false
             return
         }
         
@@ -627,6 +685,8 @@ class TimelineManager: ObservableObject {
     }
     
     private func performSearch(_ query: String) async -> [SearchResult] {
+        await ensureAllHistoryLoadedForSearch()
+
         let dbPath = self.dbPath
         
         var db: OpaquePointer?
@@ -639,20 +699,17 @@ class TimelineManager: ObservableObject {
         let lowerQuery = query.lowercased()
         let likePattern = "%\(query)%"  // For metadata search
         
-        // Use FTS5 for fast full-text search (much faster than LIKE)
-        // Escape special FTS characters and add prefix matching
-        let ftsQuery = query
-            .replacingOccurrences(of: "\"", with: "\"\"")
-            .replacingOccurrences(of: "*", with: "")
-        let ftsPattern = "\"\(ftsQuery)\"*"  // Prefix match with phrase
+        // Use FTS5 for fast full-text search across all history.
+        // Tokenized prefix query gives broader matches than strict phrase-prefix.
+        let ftsPattern = buildFTSPattern(for: query)
         
         let ftsSql = """
-            SELECT DISTINCT fts.frame_id, fts.text, f.time, f.window_title, f.url
+            SELECT fts.frame_id, fts.text, f.time, f.window_title, f.url, bm25(CONTENT_FTS) AS rank
             FROM CONTENT_FTS fts
             JOIN FRAME f ON CAST(fts.frame_id AS INTEGER) = f.id
             WHERE CONTENT_FTS MATCH ?
-            ORDER BY fts.frame_id DESC
-            LIMIT 50
+            ORDER BY rank ASC
+            LIMIT \(textSearchLimit)
         """
         
         var stmt: OpaquePointer?
@@ -663,6 +720,7 @@ class TimelineManager: ObservableObject {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(stmt, 0))
                 guard !seenFrames.contains(frameId) else { continue }
+                guard frameHasVideo(frameId) else { continue }
                 seenFrames.insert(frameId)
                 
                 let text = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
@@ -690,7 +748,7 @@ class TimelineManager: ObservableObject {
                OR tab_title LIKE ? COLLATE NOCASE
                OR clipboard LIKE ? COLLATE NOCASE
             ORDER BY id DESC
-            LIMIT 20
+            LIMIT \(metadataSearchLimit)
         """
         
         if sqlite3_prepare_v2(db, metaSql, -1, &stmt, nil) == SQLITE_OK {
@@ -703,6 +761,7 @@ class TimelineManager: ObservableObject {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(stmt, 0))
                 guard !existingFrameIds.contains(frameId) else { continue }
+                guard frameHasVideo(frameId) else { continue }
                 
                 let url = sqlite3_column_text(stmt, 1).map { String(cString: $0) }
                 let tabTitle = sqlite3_column_text(stmt, 2).map { String(cString: $0) }
@@ -753,6 +812,7 @@ class TimelineManager: ObservableObject {
         
         guard !query.isEmpty else {
             searchResults = []
+            isPreparingSearchHistory = false
             return
         }
         
@@ -767,6 +827,8 @@ class TimelineManager: ObservableObject {
     }
     
     private func performSemanticSearch(_ query: String) async -> [SearchResult] {
+        await ensureAllHistoryLoadedForSearch()
+
         // Generate query embedding
         guard let queryVector = embeddingService.embed(query) else {
             // Fallback to text search
@@ -778,8 +840,8 @@ class TimelineManager: ObservableObject {
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_close(db) }
         
-        // Load recent embeddings (limit to 10k for performance)
-        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING ORDER BY frame_id DESC LIMIT 10000"
+        // Search all available embeddings to avoid recency bias.
+        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
@@ -788,6 +850,7 @@ class TimelineManager: ObservableObject {
         
         while sqlite3_step(stmt) == SQLITE_ROW {
             let frameId = Int(sqlite3_column_int(stmt, 0))
+            guard frameHasVideo(frameId) else { continue }
             
             guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
             let blobSize = Int(sqlite3_column_bytes(stmt, 1))
@@ -855,5 +918,42 @@ class TimelineManager: ObservableObject {
         
         return results
     }
-}
 
+    private func ensureAllHistoryLoadedForSearch() async {
+        isPreparingSearchHistory = true
+        defer { isPreparingSearchHistory = false }
+
+        if hasLoadedAllHistoryForSearch || loadedFromDate == Date.distantPast {
+            hasLoadedAllHistoryForSearch = true
+            return
+        }
+
+        if !isLoadingMore {
+            loadAllHistory()
+        }
+
+        while isLoadingMore {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        hasLoadedAllHistoryForSearch = loadedFromDate == Date.distantPast
+    }
+
+    private func frameHasVideo(_ frameId: Int) -> Bool {
+        getIndexForFrameId(frameId) != nil
+    }
+
+    private func buildFTSPattern(for query: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let sanitizedScalars = query.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : " "
+        }
+        let sanitized = String(sanitizedScalars)
+        let tokens = sanitized.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+
+        if tokens.isEmpty {
+            return query.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "*", with: "")
+        }
+        return tokens.map { "\($0)*" }.joined(separator: " ")
+    }
+}

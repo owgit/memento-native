@@ -49,6 +49,17 @@ cd MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh
 ```
 
+## Updating
+
+If you're updating from an older version, follow the release update steps in [UPDATING.md](UPDATING.md).
+
+Quick summary:
+
+1. Quit both apps
+2. Replace both apps in `/Applications`
+3. Start `Memento Capture` first
+4. Re-check Screen Recording permission if macOS asks
+
 ## Setup Permissions
 
 1. Open **System Settings** → **Privacy & Security** → **Screen Recording**

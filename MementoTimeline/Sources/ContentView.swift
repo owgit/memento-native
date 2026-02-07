@@ -48,10 +48,7 @@ func formatTimeDisplay(_ timestamp: String) -> String {
     }
     
     // Show date + time
-    let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
-    let months = isSwedish 
-        ? ["", "jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
-        : ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    let months = L.months
     let monthName = month > 0 && month < months.count ? months[month] : ""
     return "\(day) \(monthName) \(timeStr)"
 }
@@ -62,20 +59,12 @@ struct ContentView: View {
     @State private var controlsTimer: Timer?
     @State private var isHoveringTimeline = false
     @State private var mouseLocation: CGPoint = .zero
-    @State private var previewFrame: NSImage?
-    @State private var previewTime: String = ""
     @State private var zoomLevel: CGFloat = 1.0
-    @State private var hasInitializedZoom = false
-    @State private var isFitToScreen = true  // Track fit-to-screen mode
     @State private var isDragging = false
     @State private var dragFrameIndex: Int = 0
     @State private var lastFrameLoadTime: Date = .distantPast
     @State private var eventMonitors: [Any] = []  // Store event monitors to prevent leak
     @State private var searchDebounceTask: Task<Void, Never>?
-    @FocusState private var isSearchFieldFocused: Bool
-    
-    // Text selection - always enabled (Live Text handles it at any zoom)
-    private var canSelectText: Bool { true }
     
     var body: some View {
         ZStack {
@@ -227,7 +216,7 @@ struct ContentView: View {
                     ProgressView()
                         .scaleEffect(1.5)
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    Text(manager.totalFrames > 0 ? L.loading : "No captures yet")
+                    Text(manager.totalFrames > 0 ? L.loading : L.noCapturesYet)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -250,7 +239,7 @@ struct ContentView: View {
                             .font(.system(size: 14))
                     }
                     .buttonStyle(ControlButtonStyle(size: 32))
-                    .help("Första (Home)")
+                    .help(L.firstFrameHelp)
                     
                     Button(action: { manager.previousFrame() }) {
                         Image(systemName: "chevron.left")
@@ -258,7 +247,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(ControlButtonStyle(size: 44))
                     .keyboardShortcut(.leftArrow, modifiers: [])
-                    .help("Föregående (←)")
+                    .help(L.previousFrameHelp)
                 }
                 
                 Spacer()
@@ -304,14 +293,14 @@ struct ContentView: View {
                     }
                     .buttonStyle(ControlButtonStyle(size: 44))
                     .keyboardShortcut(.rightArrow, modifiers: [])
-                    .help("Nästa (→)")
+                    .help(L.nextFrameHelp)
                     
                     Button(action: { manager.jumpToFrame(manager.totalFrames - 1) }) {
                         Image(systemName: "forward.end.fill")
                             .font(.system(size: 14))
                     }
                     .buttonStyle(ControlButtonStyle(size: 32))
-                    .help("Sista (End)")
+                    .help(L.lastFrameHelp)
                     
                     // Action buttons group
                     HStack(spacing: 8) {
@@ -327,7 +316,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(ControlButtonStyle(size: 30))
                         .keyboardShortcut("f", modifiers: .command)
-                        .help("Sök (⌘F)")
+                        .help(L.searchHelp)
                         
                         // Text panel
                         Button(action: { 
@@ -343,7 +332,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.showTextOverlay))
                         .keyboardShortcut("t", modifiers: .command)
-                        .help("Visa OCR-text (⌘T)")
+                        .help(L.showTextHelp)
                         
                         // Copy all
                         Button(action: { manager.copyAllText() }) {
@@ -351,7 +340,7 @@ struct ContentView: View {
                                 .font(.system(size: 13))
                         }
                         .buttonStyle(ControlButtonStyle(size: 30))
-                        .help("Kopiera all text")
+                        .help(L.copyTextHelp)
                     }
                 }
             }
@@ -600,6 +589,19 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
+
+                if manager.isPreparingSearchHistory {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(L.loadingSearchHistory)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.75))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+                }
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
@@ -620,6 +622,15 @@ struct ContentView: View {
                         }
                     }
                     .frame(maxHeight: 400)
+                } else if manager.isPreparingSearchHistory {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(L.loadingSearchHistory)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    .frame(height: 150)
                 } else if !manager.searchQuery.isEmpty && manager.searchQuery.count >= 2 {
                     VStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
@@ -691,7 +702,7 @@ struct ContentView: View {
                     Button(action: { manager.copyAllText() }) {
                         HStack(spacing: 6) {
                             Image(systemName: "doc.on.doc")
-                            Text("Kopiera allt")
+                            Text(L.copyAll)
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white)
@@ -731,7 +742,7 @@ struct ContentView: View {
                         Image(systemName: "text.magnifyingglass")
                             .font(.system(size: 36))
                             .foregroundColor(.white.opacity(0.2))
-                        Text("Ingen text hittad")
+                        Text(L.noTextFound)
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -788,50 +799,10 @@ struct ContentView: View {
         }
     }
     
-    private func handleKeyEvent(_ event: NSEvent) {
-        switch event.keyCode {
-        case 123: // Left arrow
-            manager.previousFrame()
-            showControlsTemporarily()
-        case 124: // Right arrow
-            manager.nextFrame()
-            showControlsTemporarily()
-        case 53: // Escape
-            if manager.isSearching {
-                withAnimation { manager.isSearching = false }
-            }
-        case 49: // Space
-            showControls.toggle()
-        case 24: // + (equals key)
-            if !isFitToScreen {
-                let step: CGFloat = zoomLevel >= 1.0 ? 0.25 : (zoomLevel >= 0.5 ? 0.1 : 0.05)
-                zoomLevel = min(5.0, zoomLevel + step)
-                showControlsTemporarily()
-            }
-        case 27: // - (minus key)
-            if !isFitToScreen {
-                let step: CGFloat = zoomLevel > 1.0 ? 0.25 : (zoomLevel > 0.5 ? 0.1 : 0.05)
-                zoomLevel = max(0.1, zoomLevel - step)
-                showControlsTemporarily()
-            }
-        case 29: // 0
-            isFitToScreen = false
-            zoomLevel = 1.0
-            showControlsTemporarily()
-        default:
-            break
-        }
-    }
-    
     private func toggleFullscreen() {
         if let window = NSApplication.shared.windows.first {
             window.toggleFullScreen(nil)
         }
-    }
-    
-    private func fitToScreen() {
-        // Just reset zoom - LiveTextImageView handles fitting
-        zoomLevel = 1.0
     }
 }
 
@@ -1031,7 +1002,7 @@ struct SearchResultRow: View {
         
         let day = Int(dateComponents[2]) ?? 0
         let monthNum = Int(dateComponents[1]) ?? 0
-        let months = ["", "jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
+        let months = L.months
         let month = monthNum > 0 && monthNum < months.count ? months[monthNum] : ""
         return day > 0 ? "\(day) \(month)" : "?"
     }

@@ -10,11 +10,19 @@ enum L {
     // MARK: - General
     static var copied: String { isSwedish ? "Kopierat!" : "Copied!" }
     static var loading: String { isSwedish ? "Laddar..." : "Loading..." }
+    static var noCapturesYet: String { isSwedish ? "Inga inspelningar än" : "No captures yet" }
     static var of: String { isSwedish ? "av" : "of" }
     
     // MARK: - Top Bar
     static var copyAllText: String { isSwedish ? "Kopiera ALL text" : "Copy ALL text" }
     static var showText: String { isSwedish ? "Visa text" : "Show text" }
+    static var firstFrameHelp: String { isSwedish ? "Första (Home)" : "First (Home)" }
+    static var previousFrameHelp: String { isSwedish ? "Föregående (←)" : "Previous (←)" }
+    static var nextFrameHelp: String { isSwedish ? "Nästa (→)" : "Next (→)" }
+    static var lastFrameHelp: String { isSwedish ? "Sista (End)" : "Last (End)" }
+    static var searchHelp: String { isSwedish ? "Sök (⌘F)" : "Search (⌘F)" }
+    static var showTextHelp: String { isSwedish ? "Visa OCR-text (⌘T)" : "Show OCR text (⌘T)" }
+    static var copyTextHelp: String { isSwedish ? "Kopiera all text" : "Copy all text" }
     
     // MARK: - Controls
     static var fitToWindow: String { isSwedish ? "Anpassa till fönster" : "Fit to window" }
@@ -35,11 +43,19 @@ enum L {
         isSwedish ? "Inga resultat för \"\(query)\"" : "No results for \"\(query)\""
     }
     static var typeToSearch: String { isSwedish ? "Skriv för att söka" : "Type to search" }
+    static var loadingSearchHistory: String { isSwedish ? "Laddar hela historiken..." : "Loading full history..." }
     
     // MARK: - Text Overlay
     static var textFromScreenshot: String { isSwedish ? "Text från skärmbild" : "Text from screenshot" }
     static var copyAll: String { isSwedish ? "Kopiera allt" : "Copy all" }
     static var noTextFound: String { isSwedish ? "Ingen text hittad" : "No text found" }
+
+    // MARK: - App Menu
+    static var timelineMenu: String { isSwedish ? "Tidslinje" : "Timeline" }
+    static var menuSearch: String { isSwedish ? "Sök" : "Search" }
+    static var menuFullscreen: String { isSwedish ? "Fullskärm" : "Fullscreen" }
+    static var menuPreviousFrame: String { isSwedish ? "Föregående frame" : "Previous frame" }
+    static var menuNextFrame: String { isSwedish ? "Nästa frame" : "Next frame" }
     
     // MARK: - Months (for date formatting)
     static var months: [String] {
@@ -48,5 +64,3 @@ enum L {
             : ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     }
 }
-
-

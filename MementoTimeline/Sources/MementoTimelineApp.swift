@@ -14,25 +14,25 @@ struct MementoTimelineApp: App {
         .defaultSize(width: 1400, height: 900)
         .commands {
             CommandGroup(replacing: .newItem) { }
-            CommandMenu("Timeline") {
-                Button("Sök") {
+            CommandMenu(L.timelineMenu) {
+                Button(L.menuSearch) {
                     timelineManager.isSearching = true
                 }
                 .keyboardShortcut("f", modifiers: .command)
                 
-                Button("Fullskärm") {
+                Button(L.menuFullscreen) {
                     toggleFullscreen()
                 }
                 .keyboardShortcut("f", modifiers: [])
                 
                 Divider()
                 
-                Button("Föregående frame") {
+                Button(L.menuPreviousFrame) {
                     timelineManager.previousFrame()
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 
-                Button("Nästa frame") {
+                Button(L.menuNextFrame) {
                     timelineManager.nextFrame()
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [])
@@ -46,4 +46,3 @@ struct MementoTimelineApp: App {
         }
     }
 }
-

@@ -150,9 +150,9 @@ class MenuBarManager {
     }
     
     @objc private func showStats() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
-        let cachePath = home.appendingPathComponent(".cache/memento")
+        let cachePath = Settings.shared.storageURL
+        let dbPath = cachePath.appendingPathComponent("memento.db").path
+        let displayPath = (cachePath.path as NSString).abbreviatingWithTildeInPath
         
         var frameCount = 0
         var embeddingCount = 0
@@ -196,7 +196,7 @@ class MenuBarManager {
         📊 \(L.frames): \(frameCount)
         🧠 \(L.embeddings): \(embeddingCount)
         💾 \(L.disk): \(diskUsage)
-        📁 \(L.location): ~/.cache/memento/
+        📁 \(L.location): \(displayPath)/
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: L.ok)
@@ -232,89 +232,26 @@ class MenuBarManager {
         default:
             return
         }
-        
-        let cutoffString: String
-        if deleteAll {
-            cutoffString = ISO8601DateFormatter().string(from: Date().addingTimeInterval(86400)) // Tomorrow = delete all
-            print("🗑️ Deleting ALL frames")
-        } else {
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!
-            cutoffString = ISO8601DateFormatter().string(from: cutoffDate)
-            print("🗑️ Cleaning frames older than: \(cutoffString)")
-        }
-        
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let dbPath = home.appendingPathComponent(".cache/memento/memento.db").path
-        let cachePath = home.appendingPathComponent(".cache/memento")
-        
-        var deletedFrames = 0
-        var deletedVideos = 0
-        
-        var db: OpaquePointer?
-        if sqlite3_open(dbPath, &db) == SQLITE_OK {
-            var frameIds: [Int] = []
-            var stmt: OpaquePointer?
-            
-            if deleteAll {
-                // Get all frame IDs
-                let selectSQL = "SELECT id FROM FRAME"
-                if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
-                    while sqlite3_step(stmt) == SQLITE_ROW {
-                        frameIds.append(Int(sqlite3_column_int(stmt, 0)))
-                    }
-                    sqlite3_finalize(stmt)
-                }
-                // Delete everything
-                sqlite3_exec(db, "DELETE FROM EMBEDDING", nil, nil, nil)
-                sqlite3_exec(db, "DELETE FROM CONTENT", nil, nil, nil)
-                sqlite3_exec(db, "DELETE FROM FRAME", nil, nil, nil)
-            } else {
-            let selectSQL = "SELECT id FROM FRAME WHERE time < ?"
-            if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, cutoffString, -1, nil)
-                while sqlite3_step(stmt) == SQLITE_ROW {
-                    frameIds.append(Int(sqlite3_column_int(stmt, 0)))
-                }
-                sqlite3_finalize(stmt)
-            }
-            sqlite3_exec(db, "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            sqlite3_exec(db, "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < '\(cutoffString)')", nil, nil, nil)
-            sqlite3_exec(db, "DELETE FROM FRAME WHERE time < '\(cutoffString)'", nil, nil, nil)
-            }
-            
-            deletedFrames = frameIds.count
-            
-            // Delete video files
-            if deleteAll {
-                // Delete ALL mp4 files in cache
-                if let files = try? FileManager.default.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil) {
-                    for file in files where file.pathExtension == "mp4" {
-                        try? FileManager.default.removeItem(at: file)
-                        deletedVideos += 1
-                    }
-                }
-            } else {
-                // Delete only videos matching deleted frame IDs
-                let framesPerVideo = 5
-                let videoFrameIds = Set(frameIds.filter { $0 % framesPerVideo == 0 })
-                for videoId in videoFrameIds {
-                    let videoPath = cachePath.appendingPathComponent("\(videoId).mp4")
-                if FileManager.default.fileExists(atPath: videoPath.path) {
-                    try? FileManager.default.removeItem(at: videoPath)
-                    deletedVideos += 1
-                }
-            }
-            }
-            
-            print("🗑️ Cleanup: \(deletedFrames) frames, \(deletedVideos) videos deleted")
-            
-            sqlite3_exec(db, "VACUUM", nil, nil, nil)
-            sqlite3_close(db)
-        }
+
+        let cachePath = Settings.shared.storageURL
+        let dbPath = cachePath.appendingPathComponent("memento.db").path
+        let cutoffString = deleteAll
+            ? nil
+            : ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: -daysToKeep, to: Date())!)
+
+        let result = StorageCleaner.cleanup(
+            dbPath: dbPath,
+            cachePath: cachePath,
+            cutoffISO8601: cutoffString,
+            deleteAll: deleteAll,
+            framesPerVideo: 5
+        )
+
+        print("🗑️ Cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
         
         let resultAlert = NSAlert()
         resultAlert.messageText = L.cleanDone
-        resultAlert.informativeText = L.cleanResult(deletedFrames, deletedVideos)
+        resultAlert.informativeText = L.cleanResult(result.deletedFrames, result.deletedVideos)
         resultAlert.alertStyle = .informational
         resultAlert.addButton(withTitle: L.ok)
         resultAlert.runModal()

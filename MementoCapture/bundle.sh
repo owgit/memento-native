@@ -8,6 +8,39 @@ BUNDLE_ID="com.memento.capture"
 APP_DIR="/Applications/${APP_NAME}.app"
 BINARY_PATH="$APP_DIR/Contents/MacOS/memento-capture"
 
+select_sign_identity() {
+    if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
+        echo "$MEMENTO_CODESIGN_IDENTITY"
+        return
+    fi
+    if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+        echo "$CODESIGN_IDENTITY"
+        return
+    fi
+
+    local detected
+    detected=$(security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application:.*\|Apple Development:.*\|Mac Developer:.*\)"/\1/p' \
+        | head -n 1)
+    if [ -n "$detected" ]; then
+        echo "$detected"
+    else
+        echo "-"
+    fi
+}
+
+SIGN_IDENTITY="$(select_sign_identity)"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "⚠️  No signing identity found. Falling back to ad-hoc signing."
+    echo "   Set MEMENTO_CODESIGN_IDENTITY=\"Developer ID Application: ...\" (or Apple Development) for stable signing."
+else
+    echo "🔏 Using signing identity: $SIGN_IDENTITY"
+fi
+
+sign_app() {
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+}
+
 echo "🔨 Building release..."
 swift build -c release
 
@@ -25,7 +58,7 @@ if [ -f "$BINARY_PATH" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
     
     # Re-sign after binary update
-    codesign --force --deep --sign - "$APP_DIR" 2>/dev/null
+    sign_app
     echo "✅ Binary updated (build $BUILD_NUMBER)"
     echo ""
     echo "ℹ️  If screen capture stops working, use the in-app Permission Guide"
@@ -80,9 +113,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# Sign the app (ad-hoc signing)
+# Sign the app
 echo "🔐 Signing app..."
-codesign --force --deep --sign - "$APP_DIR"
+sign_app
 
 echo ""
 echo "✅ App bundle created: $APP_DIR"

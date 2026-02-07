@@ -9,11 +9,16 @@ class EmbeddingService {
     let dimensions = 512  // NL sentence embedding dimension
     
     init() {
-        // Load sentence embedding model (works offline)
-        if let embedding = NLEmbedding.sentenceEmbedding(for: .english) {
-            sentenceEmbedding = embedding
-            print("🧠 Sentence embedding loaded (512-dim)")
-        } else {
+        // Try multiple languages for better query coverage.
+        let languages: [NLLanguage] = [.english, .swedish, .german, .french, .spanish]
+        for lang in languages {
+            if let embedding = NLEmbedding.sentenceEmbedding(for: lang) {
+                sentenceEmbedding = embedding
+                print("🧠 Sentence embedding loaded (\(lang.rawValue), 512-dim)")
+                break
+            }
+        }
+        if sentenceEmbedding == nil {
             print("⚠️ Sentence embedding not available")
         }
     }

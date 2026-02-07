@@ -13,7 +13,13 @@ class Database {
     }
     
     deinit {
+        close()
+    }
+
+    func close() {
+        guard db != nil else { return }
         sqlite3_close(db)
+        db = nil
     }
     
     private func openDatabase() {

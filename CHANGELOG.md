@@ -2,6 +2,17 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.4] - 2026-02-07
+
+### Added
+- Automatic storage migration when changing storage location in Settings
+- Release update guide for users (`UPDATING.md`)
+
+### Improved
+- Search now loads full history before querying
+- Older search results now resolve to valid screenshot frames more reliably
+- Bundle scripts now support stable signing identities when available
+
 ## [1.0.3] - 2026-01-23
 
 ### Added
@@ -43,4 +54,3 @@ All notable changes to Memento Native will be documented in this file.
 - Parameterized SQL queries to prevent injection
 - 100% local storage, no cloud/telemetry
 - Clipboard monitoring disabled by default
-

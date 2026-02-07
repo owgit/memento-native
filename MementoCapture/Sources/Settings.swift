@@ -62,6 +62,9 @@ class Settings: ObservableObject {
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7
         self.excludedApps = defaults.stringArray(forKey: Key.excludedApps.rawValue) ?? ["Memento Timeline", "MementoTimeline"]
         self.storagePath = defaults.string(forKey: Key.storagePath.rawValue) ?? defaultPath
+
+        // Ensure clipboard capture state is restored on app launch.
+        ClipboardCapture.shared.isEnabled = self.clipboardMonitoring
     }
     
     // MARK: - LaunchAgent
@@ -108,10 +111,18 @@ class Settings: ObservableObject {
     func removeExcludedApp(_ app: String) {
         excludedApps.removeAll { $0 == app }
     }
+
+    func updateStoragePath(_ newPath: String) throws -> StorageMigrator.Result {
+        let normalized = URL(fileURLWithPath: newPath).standardizedFileURL.path
+        guard !normalized.isEmpty else { return StorageMigrator.Result() }
+        guard normalized != storagePath else { return StorageMigrator.Result() }
+
+        let result = try CaptureService.shared.switchStoragePath(to: URL(fileURLWithPath: normalized))
+        storagePath = normalized
+        return result
+    }
     
     var storageURL: URL {
         URL(fileURLWithPath: storagePath)
     }
 }
-
-

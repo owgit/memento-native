@@ -8,6 +8,39 @@ BUNDLE_ID="com.memento.timeline"
 APP_DIR="/Applications/${APP_NAME}.app"
 BINARY_PATH="$APP_DIR/Contents/MacOS/MementoTimeline"
 
+select_sign_identity() {
+    if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
+        echo "$MEMENTO_CODESIGN_IDENTITY"
+        return
+    fi
+    if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+        echo "$CODESIGN_IDENTITY"
+        return
+    fi
+
+    local detected
+    detected=$(security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application:.*\|Apple Development:.*\|Mac Developer:.*\)"/\1/p' \
+        | head -n 1)
+    if [ -n "$detected" ]; then
+        echo "$detected"
+    else
+        echo "-"
+    fi
+}
+
+SIGN_IDENTITY="$(select_sign_identity)"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "⚠️  No signing identity found. Falling back to ad-hoc signing."
+    echo "   Set MEMENTO_CODESIGN_IDENTITY=\"Developer ID Application: ...\" (or Apple Development) for stable signing."
+else
+    echo "🔏 Using signing identity: $SIGN_IDENTITY"
+fi
+
+sign_app() {
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+}
+
 echo "🔨 Building release..."
 swift build -c release
 
@@ -19,7 +52,13 @@ if [ -f "$BINARY_PATH" ]; then
     fi
     echo "📦 Updating binary..."
     cp .build/release/MementoTimeline "$BINARY_PATH"
-    echo "✅ Binary updated"
+
+    BUILD_NUMBER=$(date +%Y%m%d%H%M)
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
+
+    echo "🔐 Re-signing app..."
+    sign_app
+    echo "✅ Binary updated (build $BUILD_NUMBER)"
     exit 0
 fi
 
@@ -34,6 +73,7 @@ cp .build/release/MementoTimeline "$BINARY_PATH"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
 
+BUILD_NUMBER=$(date +%Y%m%d%H%M)
 cat > "$APP_DIR/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -48,7 +88,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${BUILD_NUMBER}</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundlePackageType</key>
@@ -64,8 +104,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
 EOF
 
 echo "🔐 Signing app..."
-codesign --force --deep --sign - "$APP_DIR"
+sign_app
 
 echo ""
 echo "✅ App bundle created: $APP_DIR"
-

@@ -2,12 +2,57 @@
 # Build DMG installer for Memento Native
 # Creates a professional DMG with both apps
 
-set -e
+set -euo pipefail
 
-VERSION="1.0.4"
+DEFAULT_VERSION="1.0.4"
+if [ "$#" -gt 1 ]; then
+    echo "Usage: $0 [version]"
+    echo "   or: MEMENTO_VERSION=1.2.3 $0"
+    exit 1
+fi
+
+VERSION="${MEMENTO_VERSION:-${1:-$DEFAULT_VERSION}}"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "❌ Invalid version: $VERSION"
+    echo "   Expected format: MAJOR.MINOR.PATCH (example: 1.0.4)"
+    exit 1
+fi
+
 DMG_NAME="Memento-Native-${VERSION}"
 DMG_DIR="dist"
 STAGING_DIR="${DMG_DIR}/staging"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTARY_PROFILE="${MEMENTO_NOTARY_PROFILE:-}"
+DMG_PATH="${DMG_DIR}/${DMG_NAME}.dmg"
+
+select_sign_identity() {
+    if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
+        echo "$MEMENTO_CODESIGN_IDENTITY"
+        return
+    fi
+    if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+        echo "$CODESIGN_IDENTITY"
+        return
+    fi
+
+    local detected
+    detected=$(security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application:.*\|Apple Development:.*\|Mac Developer:.*\)"/\1/p' \
+        | head -n 1)
+    if [ -n "$detected" ]; then
+        echo "$detected"
+    else
+        echo "-"
+    fi
+}
+
+SIGN_IDENTITY="$(select_sign_identity)"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "⚠️  No signing identity found. Falling back to ad-hoc signing."
+    echo "   Set MEMENTO_CODESIGN_IDENTITY=\"Developer ID Application: ...\" for trusted releases."
+else
+    echo "🔏 Using signing identity: $SIGN_IDENTITY"
+fi
 
 echo "🏗️  Building Memento Native v${VERSION}"
 echo ""
@@ -36,7 +81,7 @@ mkdir -p "$CAPTURE_APP/Contents/Resources"
 cp MementoCapture/.build/release/memento-capture "$CAPTURE_APP/Contents/MacOS/"
 cp MementoCapture/AppIcon.icns "$CAPTURE_APP/Contents/Resources/" 2>/dev/null || true
 
-cat > "$CAPTURE_APP/Contents/Info.plist" << 'EOF'
+cat > "$CAPTURE_APP/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -50,9 +95,9 @@ cat > "$CAPTURE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Capture</string>
     <key>CFBundleVersion</key>
-    <string>1.0.4</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.4</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -80,7 +125,7 @@ mkdir -p "$TIMELINE_APP/Contents/Resources"
 cp MementoTimeline/.build/release/MementoTimeline "$TIMELINE_APP/Contents/MacOS/"
 cp MementoTimeline/AppIcon.icns "$TIMELINE_APP/Contents/Resources/" 2>/dev/null || true
 
-cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
+cat > "$TIMELINE_APP/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -94,9 +139,9 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Memento Timeline</string>
     <key>CFBundleVersion</key>
-    <string>1.0.4</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.4</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -111,10 +156,10 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << 'EOF'
 </plist>
 EOF
 
-# Sign both apps (ad-hoc)
+# Sign both apps
 echo "🔐 Signing apps..."
-codesign --force --deep --sign - "$CAPTURE_APP"
-codesign --force --deep --sign - "$TIMELINE_APP"
+codesign --force --deep --sign "$SIGN_IDENTITY" "$CAPTURE_APP"
+codesign --force --deep --sign "$SIGN_IDENTITY" "$TIMELINE_APP"
 
 # Create Applications symlink for DMG
 ln -s /Applications "${STAGING_DIR}/Applications"
@@ -152,6 +197,16 @@ MEMENTO NATIVE - Installation
 3. Grant Screen Recording permission when prompted
 4. Use "Memento Timeline" to search your history
 
+UPDATING FROM A PREVIOUS VERSION
+================================
+
+1. Quit both Memento apps
+2. Replace both apps in /Applications
+3. Launch Memento Capture first
+4. If capture stops working:
+   - System Settings -> Privacy & Security -> Screen Recording
+   - Toggle Memento Capture OFF/ON, or remove and add it again
+
 Requirements: macOS 14.0+
 
 More info: https://github.com/owgit/memento-native
@@ -179,24 +234,32 @@ echo "💿 Creating DMG..."
 hdiutil create -volname "Memento Native" \
     -srcfolder "$STAGING_DIR" \
     -ov -format UDZO \
-    "${DMG_DIR}/${DMG_NAME}.dmg"
+    "${DMG_PATH}"
+
+if [ "$SIGN_IDENTITY" != "-" ]; then
+    echo "🔐 Signing DMG..."
+    codesign --force --sign "$SIGN_IDENTITY" "${DMG_PATH}"
+fi
+
+# Optional notarization for trusted public distribution.
+# Requires:
+#   - Developer ID Application certificate
+#   - MEMENTO_NOTARY_PROFILE set to an existing notarytool keychain profile
+if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] && [ -n "$NOTARY_PROFILE" ]; then
+    echo "🛡️  Notarizing DMG with profile: $NOTARY_PROFILE"
+    xcrun notarytool submit "${DMG_PATH}" --keychain-profile "$NOTARY_PROFILE" --wait
+    echo "📌 Stapling notarization ticket..."
+    xcrun stapler staple "${DMG_PATH}"
+elif [ -n "$NOTARY_PROFILE" ]; then
+    echo "⚠️  Notarization skipped: selected identity is not Developer ID Application."
+else
+    echo "ℹ️  Notarization skipped (set MEMENTO_NOTARY_PROFILE to enable)."
+fi
 
 # Cleanup
 rm -rf "$STAGING_DIR"
 
 echo ""
-echo "✅ DMG created: ${DMG_DIR}/${DMG_NAME}.dmg"
+echo "✅ DMG created: ${DMG_PATH}"
 echo ""
-echo "📊 Size: $(du -h "${DMG_DIR}/${DMG_NAME}.dmg" | cut -f1)"
-
-# Auto-increment patch version for next build
-IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-NEXT_PATCH=$((PATCH + 1))
-NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
-
-# Update version in this script for next build
-sed -i '' "s/^VERSION=\"${VERSION}\"/VERSION=\"${NEXT_VERSION}\"/" "$0"
-sed -i '' "s/<string>${VERSION}<\/string>/<string>${NEXT_VERSION}<\/string>/g" "$0"
-
-echo "📝 Next version: ${NEXT_VERSION}"
-
+echo "📊 Size: $(du -h "${DMG_PATH}" | cut -f1)"

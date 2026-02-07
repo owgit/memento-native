@@ -37,6 +37,9 @@ class PermissionGuideController {
 struct PermissionGuideView: View {
     @State private var hasPermission = false
     @State private var checkingPermission = false
+    @State private var repairingPermission = false
+    @State private var repairStatusMessage: String?
+    @State private var repairStatusIsError = false
     
     private var isSwedish: Bool {
         Locale.current.language.languageCode?.identifier == "sv"
@@ -83,6 +86,13 @@ struct PermissionGuideView: View {
                 
                 // Actions
                 actionButtons
+
+                if let repairStatusMessage {
+                    Label(repairStatusMessage, systemImage: repairStatusIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(repairStatusIsError ? .orange : .green)
+                        .padding(.top, 2)
+                }
             }
             .padding(24)
         }
@@ -192,10 +202,24 @@ struct PermissionGuideView: View {
     
     private var actionButtons: some View {
         HStack(spacing: 12) {
+            Button(action: repairPermissionsAfterUpdate) {
+                if repairingPermission {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(minWidth: 120)
+                } else {
+                    Label(
+                        isSwedish ? "Fixa efter uppdatering" : "Fix after update",
+                        systemImage: "wand.and.stars"
+                    )
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(repairingPermission)
+
             Button(action: openSystemSettings) {
                 Label(isSwedish ? "Öppna Inställningar" : "Open Settings", systemImage: "gear")
             }
-            .buttonStyle(.borderedProminent)
             
             Button(action: copyTerminalCommand) {
                 Label(isSwedish ? "Kopiera reset-kommando" : "Copy reset command", systemImage: "terminal")
@@ -263,6 +287,52 @@ struct PermissionGuideView: View {
             NSWorkspace.shared.open(url)
         }
     }
+
+    private func repairPermissionsAfterUpdate() {
+        guard !repairingPermission else { return }
+        repairingPermission = true
+        repairStatusMessage = nil
+        repairStatusIsError = false
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let success = resetScreenCapturePermission()
+
+            DispatchQueue.main.async {
+                repairingPermission = false
+                openSystemSettings()
+                CGRequestScreenCaptureAccess()
+                checkPermission()
+
+                if success {
+                    repairStatusMessage = isSwedish
+                        ? "Reset klart. Aktivera Memento Capture i listan."
+                        : "Reset complete. Enable Memento Capture in the list."
+                    repairStatusIsError = false
+                } else {
+                    repairStatusMessage = isSwedish
+                        ? "Kunde inte köra reset automatiskt. Använd terminal-knappen."
+                        : "Could not run reset automatically. Use the terminal button."
+                    repairStatusIsError = true
+                }
+            }
+        }
+    }
+
+    private func resetScreenCapturePermission() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "ScreenCapture", "com.memento.capture"]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
     
     private func copyTerminalCommand() {
         NSPasteboard.general.clearContents()
@@ -278,5 +348,4 @@ struct PermissionGuideView: View {
         alert.runModal()
     }
 }
-
 
