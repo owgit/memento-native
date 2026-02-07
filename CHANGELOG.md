@@ -2,6 +2,13 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.7] - 2026-02-07
+
+### Fixed
+- DMG packaging now avoids Apple Development signing in untrusted mode
+- Local/untrusted builds now force ad-hoc app signing for better compatibility
+- Release script keeps strict guardrails for trusted public releases
+
 ## [1.0.5] - 2026-02-07
 
 ### Added

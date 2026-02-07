@@ -78,6 +78,13 @@ if [ "$ALLOW_UNTRUSTED_RELEASE" != "1" ]; then
     fi
 fi
 
+# In local/untrusted mode, prefer ad-hoc signing for compatibility.
+# Apple Development certificates are not suitable for public internet distribution.
+if [ "$ALLOW_UNTRUSTED_RELEASE" = "1" ] && [[ "$SIGN_IDENTITY" != Developer\ ID\ Application:* ]]; then
+    echo "ℹ️  Untrusted release mode: forcing ad-hoc app signing for compatibility."
+    SIGN_IDENTITY="-"
+fi
+
 echo "🏗️  Building Memento Native v${VERSION}"
 echo ""
 
@@ -260,7 +267,7 @@ hdiutil create -volname "Memento Native" \
     -ov -format UDZO \
     "${DMG_PATH}"
 
-if [ "$SIGN_IDENTITY" != "-" ]; then
+if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
     echo "🔐 Signing DMG..."
     codesign --force --sign "$SIGN_IDENTITY" "${DMG_PATH}"
 fi
