@@ -15,12 +15,27 @@ class Settings: ObservableObject {
         case retentionDays = "retentionDays"
         case excludedApps = "excludedApps"
         case storagePath = "storagePath"
+        case pauseWhenIdle = "pauseWhenIdle"
+        case idleThresholdSeconds = "idleThresholdSeconds"
+        case pauseDuringVideo = "pauseDuringVideo"
     }
     
     // MARK: - Published Properties
     
     @Published var captureInterval: Double {
         didSet { defaults.set(captureInterval, forKey: Key.captureInterval.rawValue) }
+    }
+
+    @Published var pauseWhenIdle: Bool {
+        didSet { defaults.set(pauseWhenIdle, forKey: Key.pauseWhenIdle.rawValue) }
+    }
+
+    @Published var idleThresholdSeconds: Double {
+        didSet { defaults.set(idleThresholdSeconds, forKey: Key.idleThresholdSeconds.rawValue) }
+    }
+
+    @Published var pauseDuringVideo: Bool {
+        didSet { defaults.set(pauseDuringVideo, forKey: Key.pauseDuringVideo.rawValue) }
     }
     
     @Published var clipboardMonitoring: Bool {
@@ -57,6 +72,9 @@ class Settings: ObservableObject {
         
         // Load from UserDefaults with defaults
         self.captureInterval = defaults.object(forKey: Key.captureInterval.rawValue) as? Double ?? 2.0
+        self.pauseWhenIdle = defaults.object(forKey: Key.pauseWhenIdle.rawValue) as? Bool ?? true
+        self.idleThresholdSeconds = defaults.object(forKey: Key.idleThresholdSeconds.rawValue) as? Double ?? 90.0
+        self.pauseDuringVideo = defaults.object(forKey: Key.pauseDuringVideo.rawValue) as? Bool ?? true
         self.clipboardMonitoring = defaults.bool(forKey: Key.clipboardMonitoring.rawValue)
         self.autoStart = defaults.bool(forKey: Key.autoStart.rawValue)
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7

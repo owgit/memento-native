@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import ScreenCaptureKit
 
 /// Permission guide window with step-by-step instructions
 @MainActor
@@ -276,23 +275,9 @@ struct PermissionGuideView: View {
     
     private func checkPermission() {
         checkingPermission = true
+        // Use preflight only to avoid triggering the system permission dialog automatically.
         hasPermission = CGPreflightScreenCaptureAccess()
-        
-        // Also try to get shareable content to verify
-        Task {
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                await MainActor.run {
-                    hasPermission = !content.displays.isEmpty
-                    checkingPermission = false
-                }
-            } catch {
-                await MainActor.run {
-                    hasPermission = false
-                    checkingPermission = false
-                }
-            }
-        }
+        checkingPermission = false
     }
     
     private func openSystemSettings() {

@@ -18,6 +18,9 @@ class CaptureService {
     private var frameCount = 0
     private var timer: Timer?
     private var previousImage: CGImage?
+    private var highMotionMediaStreak = 0
+    private var videoPauseUntil: Date?
+    private var pausedVideoBundleId: String?
     
     // Components
     private let screenshotCapture = ScreenshotCapture()
@@ -75,6 +78,9 @@ class CaptureService {
         timer?.invalidate()
         timer = nil
         previousImage = nil  // Release memory
+        highMotionMediaStreak = 0
+        videoPauseUntil = nil
+        pausedVideoBundleId = nil
         videoEncoder.finalize()
     }
 
@@ -131,6 +137,16 @@ class CaptureService {
             print("🔒 Skipping capture - Screen locked or screensaver active")
             return
         }
+
+        // Skip capture if user is idle
+        if shouldPauseForIdle() {
+            return
+        }
+
+        // Skip capture while a likely video playback pause window is active
+        if shouldPauseForDetectedVideo(activeBundleId: appBundleId) {
+            return
+        }
         
         // Get browser URL and tab title
         let browserInfo = BrowserCapture.getCurrentBrowserInfo()
@@ -146,16 +162,29 @@ class CaptureService {
         
         // Check if frame changed significantly
         let shouldOCR: Bool
+        let diffScore: Double
         if let previous = previousImage {
             let diff = imageDifference(screenshot, previous)
+            diffScore = diff
             shouldOCR = diff > 0.02  // OCR if >2% change (was 50% - too aggressive)
             if !shouldOCR {
                 print("⏭️  Frame \(frameCount): skipped (diff: \(String(format: "%.2f", diff)))")
             }
         } else {
+            diffScore = 0
             shouldOCR = true
         }
         previousImage = screenshot
+
+        // Skip saving frames during likely media playback (video/streaming).
+        if shouldPauseForLikelyVideoPlayback(
+            activeApp: activeApp,
+            bundleId: appBundleId,
+            browserInfo: browserInfo,
+            diffScore: diffScore
+        ) {
+            return
+        }
         
         // Skip OCR for excluded apps
         let isExcluded = Settings.shared.isAppExcluded(activeApp)
@@ -259,6 +288,135 @@ class CaptureService {
             return true
         }
         
+        return false
+    }
+
+    private func shouldPauseForIdle() -> Bool {
+        guard Settings.shared.pauseWhenIdle else { return false }
+        guard let idleSeconds = secondsSinceLastUserInput() else { return false }
+
+        if idleSeconds >= Settings.shared.idleThresholdSeconds {
+            highMotionMediaStreak = 0
+            print("😴 Skipping capture - User idle (\(Int(idleSeconds))s)")
+            return true
+        }
+        return false
+    }
+
+    private func secondsSinceLastUserInput() -> TimeInterval? {
+        let state: CGEventSourceStateID = .hidSystemState
+        let eventTypes: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .mouseMoved, .scrollWheel]
+        let values = eventTypes.map { CGEventSource.secondsSinceLastEventType(state, eventType: $0) }
+        guard let minValue = values.min(), minValue.isFinite else { return nil }
+        return minValue
+    }
+
+    private func shouldPauseForDetectedVideo(activeBundleId: String?) -> Bool {
+        guard Settings.shared.pauseDuringVideo else {
+            videoPauseUntil = nil
+            pausedVideoBundleId = nil
+            return false
+        }
+
+        guard let pauseUntil = videoPauseUntil else { return false }
+        if Date() >= pauseUntil {
+            videoPauseUntil = nil
+            pausedVideoBundleId = nil
+            return false
+        }
+
+        if let pausedBundleId = pausedVideoBundleId,
+           let activeBundleId,
+           pausedBundleId != activeBundleId {
+            videoPauseUntil = nil
+            pausedVideoBundleId = nil
+            return false
+        }
+
+        let remaining = max(1, Int(pauseUntil.timeIntervalSinceNow.rounded()))
+        print("🎬 Skipping capture - Video playback detected (\(remaining)s left)")
+        return true
+    }
+
+    private func shouldPauseForLikelyVideoPlayback(
+        activeApp: String,
+        bundleId: String?,
+        browserInfo: BrowserCapture.BrowserInfo?,
+        diffScore: Double
+    ) -> Bool {
+        guard Settings.shared.pauseDuringVideo else {
+            highMotionMediaStreak = 0
+            return false
+        }
+
+        let isMediaContext = isLikelyMediaContext(activeApp: activeApp, bundleId: bundleId, browserInfo: browserInfo)
+        let hasRapidMotion = diffScore > 0.12
+
+        if isMediaContext && hasRapidMotion {
+            highMotionMediaStreak += 1
+        } else {
+            highMotionMediaStreak = 0
+            return false
+        }
+
+        // Require multiple consecutive high-motion frames to avoid false positives.
+        if highMotionMediaStreak < 3 {
+            return false
+        }
+
+        highMotionMediaStreak = 0
+        let pauseSeconds: TimeInterval = 30
+        videoPauseUntil = Date().addingTimeInterval(pauseSeconds)
+        pausedVideoBundleId = bundleId
+        print("🎬 Skipping capture - Likely video/streaming detected (\(Int(pauseSeconds))s)")
+        return true
+    }
+
+    private func isLikelyMediaContext(
+        activeApp: String,
+        bundleId: String?,
+        browserInfo: BrowserCapture.BrowserInfo?
+    ) -> Bool {
+        let mediaBundleIds: Set<String> = [
+            "com.apple.TV",
+            "com.apple.QuickTimePlayerX",
+            "org.videolan.vlc",
+            "com.colliderli.iina",
+            "tv.plex.desktop"
+        ]
+
+        if let bundleId, mediaBundleIds.contains(bundleId) {
+            return true
+        }
+
+        let mediaAppNames = ["QuickTime Player", "VLC", "IINA", "TV", "Plex", "Infuse"]
+        if mediaAppNames.contains(where: { activeApp.localizedCaseInsensitiveContains($0) }) {
+            return true
+        }
+
+        if let url = browserInfo?.url?.lowercased() {
+            let mediaHosts = [
+                "youtube.com",
+                "youtu.be",
+                "netflix.com",
+                "twitch.tv",
+                "disneyplus.com",
+                "max.com",
+                "primevideo.com",
+                "vimeo.com"
+            ]
+            if mediaHosts.contains(where: { url.contains($0) }) {
+                return true
+            }
+        }
+
+        if let title = browserInfo?.title?.lowercased() {
+            let mediaKeywords = ["youtube", "netflix", "twitch", "disney", "prime video", "vimeo", "watch", "trailer"]
+            if mediaKeywords.contains(where: { title.contains($0) }) {
+                return true
+            }
+        }
+
         return false
     }
     

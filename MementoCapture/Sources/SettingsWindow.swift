@@ -20,7 +20,7 @@ class SettingsWindowController {
         window = NSWindow(contentViewController: hostingController)
         window?.title = L.settings
         window?.styleMask = [.titled, .closable]
-        window?.setContentSize(NSSize(width: 450, height: 500))
+        window?.setContentSize(NSSize(width: 450, height: 620))
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -51,6 +51,25 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 200)
                 }
+
+                Toggle(L.pauseWhenIdle, isOn: $settings.pauseWhenIdle)
+
+                if settings.pauseWhenIdle {
+                    HStack {
+                        Text(L.idleAfter)
+                        Spacer()
+                        Picker("", selection: $settings.idleThresholdSeconds) {
+                            Text("30s").tag(30.0)
+                            Text("60s").tag(60.0)
+                            Text("90s").tag(90.0)
+                            Text("2m").tag(120.0)
+                            Text("5m").tag(300.0)
+                        }
+                        .frame(width: 140)
+                    }
+                }
+
+                Toggle(L.pauseDuringVideo, isOn: $settings.pauseDuringVideo)
             } header: {
                 Label(L.captureSettings, systemImage: "camera")
                     .font(.headline)
@@ -196,7 +215,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 450, height: 550)
+        .frame(width: 450, height: 620)
     }
     
     private func selectFolder() {
@@ -258,6 +277,9 @@ private extension L {
     static var settings: String { isSwedish ? "Inställningar" : "Settings" }
     static var captureSettings: String { isSwedish ? "Inspelning" : "Capture" }
     static var captureInterval: String { isSwedish ? "Intervall" : "Interval" }
+    static var pauseWhenIdle: String { isSwedish ? "Pausa när jag är inaktiv" : "Pause when I'm idle" }
+    static var idleAfter: String { isSwedish ? "Inaktiv efter" : "Idle after" }
+    static var pauseDuringVideo: String { isSwedish ? "Pausa under film/streaming" : "Pause during video/streaming" }
     static var privacy: String { isSwedish ? "Sekretess" : "Privacy" }
     static var clipboardMonitoring: String { isSwedish ? "Fånga urklipp" : "Capture clipboard" }
     static var excludedApps: String { isSwedish ? "Exkluderade appar" : "Excluded apps" }

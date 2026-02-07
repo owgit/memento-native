@@ -202,13 +202,8 @@ struct ContentView: View {
             Color.black
             
             if let image = manager.currentFrame {
-                // Fallback: SwiftUI Image shows immediately
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                // Live Text overlay for text selection (renders on top)
+                // Use a single native image view for both rendering and Live Text
+                // to avoid layout drift between highlight and visible pixels.
                 LiveTextImageView(image: image, zoomLevel: $zoomLevel, isFitToScreen: true)
             } else {
                 // Loading state
@@ -1131,27 +1126,38 @@ struct LiveTextImageView: NSViewRepresentable {
         
         let imageView = NSImageView()
         imageView.image = image
-        imageView.imageScaling = isFitToScreen ? .scaleProportionallyUpOrDown : .scaleNone
+        imageView.imageScaling = .scaleAxesIndependently
         imageView.frame = NSRect(origin: .zero, size: image.size)
         containerView.addSubview(imageView)
         containerView.frame = NSRect(origin: .zero, size: image.size)
         
         // Live Text overlay
         if let overlayView = context.coordinator.overlayView {
-            overlayView.frame = containerView.bounds
-            overlayView.autoresizingMask = [.width, .height]
+            overlayView.frame = imageView.frame
             containerView.addSubview(overlayView)
             overlayView.trackingImageView = imageView
             context.coordinator.analyzeImage(image, imageView: imageView)
         }
         
         scrollView.documentView = containerView
-        
-        // Set initial magnification low, then fit
-        scrollView.magnification = 0.1
-        
-        DispatchQueue.main.async {
-            self.fitToWindow(scrollView)
+
+        if isFitToScreen {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            let clipSize = scrollView.contentView.bounds.size
+            containerView.frame = NSRect(origin: .zero, size: clipSize)
+            imageView.frame = aspectFitRect(for: image.size, in: containerView.bounds)
+            if let overlayView = context.coordinator.overlayView {
+                overlayView.frame = imageView.frame
+                overlayView.trackingImageView = imageView
+            }
+            scrollView.magnification = 1.0
+        } else {
+            // Set initial magnification low, then fit
+            scrollView.magnification = 0.1
+            DispatchQueue.main.async {
+                self.fitToWindow(scrollView)
+            }
         }
         
         return scrollView
@@ -1183,27 +1189,52 @@ struct LiveTextImageView: NSViewRepresentable {
         let size = image.size
         imageView.image = image
         
-        // Update imageScaling based on mode
-        imageView.imageScaling = isFitToScreen ? .scaleProportionallyUpOrDown : .scaleNone
+        // Update image scaling; in fit mode we set a precise aspect-fit frame.
+        imageView.imageScaling = .scaleAxesIndependently
         
-        // Set container to clip view size if fit-to-screen, else native image size
+        let overlayView = context.coordinator.overlayView
+
+        // Set container to clip view size if fit-to-screen, else native image size.
         if isFitToScreen {
             let clipSize = scrollView.contentView.bounds.size
             containerView.frame = NSRect(origin: .zero, size: clipSize)
-            imageView.frame = containerView.bounds
+            imageView.frame = aspectFitRect(for: size, in: containerView.bounds)
             scrollView.magnification = 1.0
+            scrollView.contentView.scroll(to: .zero)
         } else {
             containerView.frame = NSRect(origin: .zero, size: size)
             imageView.frame = NSRect(origin: .zero, size: size)
             scrollView.magnification = zoomLevel
         }
         
-        // Update overlay
-        if let overlayView = context.coordinator.overlayView {
-            overlayView.frame = imageView.bounds
+        // Update overlay to match image frame exactly.
+        if let overlayView {
+            overlayView.frame = imageView.frame
+            overlayView.trackingImageView = imageView
         }
         
         context.coordinator.analyzeImage(image, imageView: imageView)
+    }
+
+    private func aspectFitRect(for imageSize: NSSize, in bounds: NSRect) -> NSRect {
+        guard imageSize.width > 0, imageSize.height > 0, bounds.width > 0, bounds.height > 0 else {
+            return bounds
+        }
+
+        let imageAspect = imageSize.width / imageSize.height
+        let boundsAspect = bounds.width / bounds.height
+
+        if imageAspect > boundsAspect {
+            let width = bounds.width
+            let height = width / imageAspect
+            let y = bounds.minY + (bounds.height - height) / 2
+            return NSRect(x: bounds.minX, y: y, width: width, height: height)
+        } else {
+            let height = bounds.height
+            let width = height * imageAspect
+            let x = bounds.minX + (bounds.width - width) / 2
+            return NSRect(x: x, y: bounds.minY, width: width, height: height)
+        }
     }
     
     private func centerContent(_ scrollView: NSScrollView) {

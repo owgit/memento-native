@@ -4,17 +4,12 @@ import SwiftUI
 
 /// App delegate for handling lifecycle
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var onboarding: OnboardingWindow?
     private var menuBarManager: MenuBarManager?
     private let lastLaunchVersionKey = "lastLaunchVersion"
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("🚀 Memento Capture Service starting...")
-        
-        // Show onboarding on first launch
-        onboarding = OnboardingWindow()
-        onboarding?.showIfNeeded()
-        
+
         // Start capture service
         let service = CaptureService.shared
         service.start()
@@ -24,7 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarManager?.setup(captureService: service)
 
         Task { @MainActor in
-            self.showUpdateGuideIfNeeded()
+            self.showStartupGuideIfNeeded()
         }
     }
     
@@ -33,7 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private func showUpdateGuideIfNeeded() {
+    private func showStartupGuideIfNeeded() {
         guard let info = Bundle.main.infoDictionary else { return }
         let shortVersion = info["CFBundleShortVersionString"] as? String ?? "?"
         let buildVersion = info["CFBundleVersion"] as? String ?? "?"
@@ -41,12 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let defaults = UserDefaults.standard
         let previousVersion = defaults.string(forKey: lastLaunchVersionKey)
+        let isFirstLaunch = previousVersion == nil
+        let isUpdate = previousVersion != nil && previousVersion != currentVersion
         defaults.set(currentVersion, forKey: lastLaunchVersionKey)
-
-        guard let previousVersion, previousVersion != currentVersion else { return }
 
         let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
         let hasPermission = CGPreflightScreenCaptureAccess()
+        
+        // First launch should open the guide directly so permissions are handled in one place.
+        if isFirstLaunch {
+            PermissionGuideController.shared.show()
+            return
+        }
+
+        // If permission is missing on any later launch, only show the guide (avoid double popups).
+        if !hasPermission {
+            PermissionGuideController.shared.show()
+            return
+        }
+
+        guard isUpdate, let previousVersion else { return }
 
         let alert = NSAlert()
         if isSwedish {
