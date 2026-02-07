@@ -24,6 +24,7 @@ STAGING_DIR="${DMG_DIR}/staging"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTARY_PROFILE="${MEMENTO_NOTARY_PROFILE:-}"
 DMG_PATH="${DMG_DIR}/${DMG_NAME}.dmg"
+ALLOW_UNTRUSTED_RELEASE="${MEMENTO_ALLOW_UNTRUSTED_RELEASE:-0}"
 
 select_sign_identity() {
     if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
@@ -35,10 +36,16 @@ select_sign_identity() {
         return
     fi
 
+    local identities
     local detected
-    detected=$(security find-identity -v -p codesigning 2>/dev/null \
-        | sed -n 's/.*"\(Developer ID Application:.*\|Apple Development:.*\|Mac Developer:.*\)"/\1/p' \
-        | head -n 1)
+    identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+    detected="$(printf '%s\n' "$identities" | awk -F'"' '/Developer ID Application:/{print $2; exit}')"
+    if [ -z "$detected" ]; then
+        detected="$(printf '%s\n' "$identities" | awk -F'"' '/Apple Development:/{print $2; exit}')"
+    fi
+    if [ -z "$detected" ]; then
+        detected="$(printf '%s\n' "$identities" | awk -F'"' '/Mac Developer:/{print $2; exit}')"
+    fi
     if [ -n "$detected" ]; then
         echo "$detected"
     else
@@ -52,6 +59,23 @@ if [ "$SIGN_IDENTITY" = "-" ]; then
     echo "   Set MEMENTO_CODESIGN_IDENTITY=\"Developer ID Application: ...\" for trusted releases."
 else
     echo "🔏 Using signing identity: $SIGN_IDENTITY"
+fi
+
+if [ "$ALLOW_UNTRUSTED_RELEASE" != "1" ]; then
+    if [[ "$SIGN_IDENTITY" != Developer\ ID\ Application:* ]]; then
+        echo "❌ Refusing public release build without a Developer ID Application certificate."
+        echo "   Current identity: ${SIGN_IDENTITY}"
+        echo "   For local testing only, set:"
+        echo "   MEMENTO_ALLOW_UNTRUSTED_RELEASE=1 ./build-dmg.sh ${VERSION}"
+        exit 1
+    fi
+    if [ -z "$NOTARY_PROFILE" ]; then
+        echo "❌ Refusing public release build without notarization profile."
+        echo "   Set MEMENTO_NOTARY_PROFILE to your notarytool keychain profile."
+        echo "   For local testing only, set:"
+        echo "   MEMENTO_ALLOW_UNTRUSTED_RELEASE=1 ./build-dmg.sh ${VERSION}"
+        exit 1
+    fi
 fi
 
 echo "🏗️  Building Memento Native v${VERSION}"
