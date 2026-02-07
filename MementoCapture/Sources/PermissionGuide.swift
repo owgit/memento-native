@@ -28,6 +28,22 @@ enum SetupHubReason {
     }
 }
 
+private enum SetupHubVisualTokens {
+    static let windowWidth: CGFloat = 620
+    static let windowHeight: CGFloat = 700
+    static let cornerRadius: CGFloat = 10
+    static let sectionSpacing: CGFloat = 18
+    static let contentPadding: CGFloat = 24
+}
+
+private enum SetupHubState {
+    case checking
+    case ready
+    case needsPermission
+    case recovering
+    case error(String)
+}
+
 /// Unified setup hub for first launch, updates and permission recovery.
 @MainActor
 class PermissionGuideController {
@@ -52,7 +68,7 @@ class PermissionGuideController {
         window = NSWindow(contentViewController: hostingController)
         window?.title = isSwedish ? "Setup Hub" : "Setup Hub"
         window?.styleMask = [.titled, .closable]
-        window?.setContentSize(NSSize(width: 620, height: 700))
+        window?.setContentSize(NSSize(width: SetupHubVisualTokens.windowWidth, height: SetupHubVisualTokens.windowHeight))
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -82,17 +98,19 @@ struct SetupHubView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: SetupHubVisualTokens.sectionSpacing) {
                     headerSection
 
                     if let banner = reason.bannerMessage(isSwedish: isSwedish) {
                         Label(banner, systemImage: "info.circle.fill")
-                            .font(.subheadline)
+                            .font(.body)
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.accentColor.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: SetupHubVisualTokens.cornerRadius))
                     }
+
+                    statusBannerSection
 
                     statusCards
 
@@ -102,13 +120,17 @@ struct SetupHubView: View {
 
                     Divider()
 
+                    whyWeAskSection
+
+                    Divider()
+
                     instructionsSection
 
                     Divider()
 
                     troubleshootingSection
                 }
-                .padding(24)
+                .padding(SetupHubVisualTokens.contentPadding)
             }
 
             Divider()
@@ -118,7 +140,7 @@ struct SetupHubView: View {
                 .padding(.vertical, 14)
                 .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(width: 620, height: 700)
+        .frame(width: SetupHubVisualTokens.windowWidth, height: SetupHubVisualTokens.windowHeight)
         .onAppear { checkPermission() }
         .onDisappear {
             permissionPollTimer?.invalidate()
@@ -153,6 +175,80 @@ struct SetupHubView: View {
             }
             .buttonStyle(.bordered)
             .disabled(checkingPermission)
+            .accessibilityLabel(isSwedish ? "Uppdatera status" : "Refresh status")
+        }
+    }
+
+    private var currentHubState: SetupHubState {
+        if checkingPermission {
+            return .checking
+        }
+        if repairingPermission {
+            return .recovering
+        }
+        if repairStatusIsError, let repairStatusMessage, !repairStatusMessage.isEmpty {
+            return .error(repairStatusMessage)
+        }
+        return hasPermission ? .ready : .needsPermission
+    }
+
+    private var statusBannerSection: some View {
+        let config = stateBannerConfig
+        return HStack(spacing: 10) {
+            Image(systemName: config.icon)
+                .foregroundColor(config.color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(config.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(config.message)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(config.color.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: SetupHubVisualTokens.cornerRadius))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var stateBannerConfig: (icon: String, color: Color, title: String, message: String) {
+        switch currentHubState {
+        case .checking:
+            return (
+                icon: "hourglass",
+                color: .blue,
+                title: isSwedish ? "Kontrollerar status..." : "Checking status...",
+                message: isSwedish ? "Vi läser aktuell behörighet." : "Reading current permission state."
+            )
+        case .ready:
+            return (
+                icon: "checkmark.seal.fill",
+                color: .green,
+                title: isSwedish ? "Redo att spela in" : "Ready to record",
+                message: isSwedish ? "Allt ser bra ut. Capture kan köra normalt." : "Everything looks good. Capture can run normally."
+            )
+        case .needsPermission:
+            return (
+                icon: "shield.lefthalf.filled.badge.exclamationmark",
+                color: .orange,
+                title: isSwedish ? "Behörighet behövs" : "Permission needed",
+                message: isSwedish ? "Klicka på Fixa automatiskt. Vi guidar dig klart." : "Click Fix automatically. We'll guide you through it."
+            )
+        case .recovering:
+            return (
+                icon: "arrow.triangle.2.circlepath",
+                color: .blue,
+                title: isSwedish ? "Återställer behörighet..." : "Recovering permission...",
+                message: isSwedish ? "Detta kan ta några sekunder." : "This can take a few seconds."
+            )
+        case .error(let message):
+            return (
+                icon: "xmark.octagon.fill",
+                color: .orange,
+                title: isSwedish ? "Åtgärd krävs" : "Action required",
+                message: message
+            )
         }
     }
 
@@ -218,11 +314,14 @@ struct SetupHubView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(repairingPermission)
+                .accessibilityLabel(hasPermission ? (isSwedish ? "Kontrollera status" : "Check status") : (isSwedish ? "Fixa behörighet automatiskt" : "Fix permission automatically"))
+                .accessibilityHint(isSwedish ? "Kör återställning och guidar till rätt inställning." : "Runs recovery and guides to the right setting.")
 
                 Button(action: openSystemSettings) {
                     Label(isSwedish ? "Öppna Inställningar" : "Open Settings", systemImage: "gear")
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel(isSwedish ? "Öppna systeminställningar" : "Open system settings")
             }
 
             if let repairStatusMessage {
@@ -237,6 +336,33 @@ struct SetupHubView: View {
                     .font(.caption)
             }
             .buttonStyle(.link)
+            .accessibilityLabel(isSwedish ? "Kopiera avancerat kommando" : "Copy advanced command")
+        }
+    }
+
+    private var whyWeAskSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(isSwedish ? "Varför behövs detta?" : "Why this is needed", systemImage: "questionmark.circle")
+                .font(.headline)
+
+            trustRow(
+                icon: "video.badge.checkmark",
+                text: isSwedish
+                    ? "För att spara dina skärmbilder måste macOS ge Memento tillgång till skärmen."
+                    : "To save your screenshots, macOS must grant Memento access to your screen."
+            )
+            trustRow(
+                icon: "lock.shield",
+                text: isSwedish
+                    ? "Inspelningen stannar på din Mac. Ingen uppladdning krävs."
+                    : "Captures stay on your Mac. No upload is required."
+            )
+            trustRow(
+                icon: "arrow.uturn.backward.circle",
+                text: isSwedish
+                    ? "Om något bryts efter uppdatering kan du reparera här med ett klick."
+                    : "If updates break permission, you can repair it here in one click."
+            )
         }
     }
 
@@ -253,6 +379,21 @@ struct SetupHubView: View {
             }
             .padding(.leading, 2)
         }
+    }
+
+    private func trustRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundColor(.accentColor)
+                .frame(width: 16)
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: SetupHubVisualTokens.cornerRadius))
     }
 
     private var troubleshootingSection: some View {
@@ -283,6 +424,7 @@ struct SetupHubView: View {
                 NSApp.keyWindow?.close()
             }
             .buttonStyle(.bordered)
+            .accessibilityLabel(isSwedish ? "Stäng setup hub" : "Close setup hub")
         }
     }
 

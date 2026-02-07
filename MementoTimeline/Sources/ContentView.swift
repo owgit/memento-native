@@ -53,6 +53,21 @@ func formatTimeDisplay(_ timestamp: String) -> String {
     return "\(day) \(monthName) \(timeStr)"
 }
 
+private enum SearchPanelState {
+    case idle
+    case loading
+    case empty
+    case error(String)
+    case results
+}
+
+private enum TimelineVisualTokens {
+    static let searchPanelWidth: CGFloat = 640
+    static let searchPanelCornerRadius: CGFloat = 20
+    static let searchRowCornerRadius: CGFloat = 8
+    static let searchPreviewCornerRadius: CGFloat = 12
+}
+
 struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
     @State private var showControls = true
@@ -589,7 +604,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Search mode toggle
                 HStack(spacing: 8) {
-                    Button(action: { manager.useSemanticSearch = false }) {
+                    Button(action: { setSearchMode(semantic: false) }) {
                         HStack(spacing: 6) {
                             Image(systemName: "text.magnifyingglass")
                             Text(L.text)
@@ -604,8 +619,9 @@ struct ContentView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L.text)
                     
-                    Button(action: { manager.useSemanticSearch = true }) {
+                    Button(action: { setSearchMode(semantic: true) }) {
                         HStack(spacing: 6) {
                             Image(systemName: "brain")
                             Text(L.semantic)
@@ -620,6 +636,7 @@ struct ContentView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L.semantic)
                     
                     Spacer()
 
@@ -651,6 +668,7 @@ struct ContentView: View {
                         }
                     )
                     .frame(height: 30)
+                    .accessibilityLabel(manager.useSemanticSearch ? L.semanticPlaceholder : L.searchPlaceholder)
                     .onChange(of: manager.searchQuery) { _, newValue in
                         searchDebounceTask?.cancel()
                         selectedSearchResultIndex = 0
@@ -668,6 +686,7 @@ struct ContentView: View {
                             }
                         } else {
                             manager.searchResults = []
+                            manager.searchErrorMessage = nil
                         }
                     }
 
@@ -681,6 +700,7 @@ struct ContentView: View {
                         Button(action: {
                             manager.searchQuery = ""
                             manager.searchResults = []
+                            manager.searchErrorMessage = nil
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 18))
@@ -720,17 +740,30 @@ struct ContentView: View {
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
+
+                if let selectedResult = selectedSearchResult {
+                    searchPreviewSection(result: selectedResult)
+                    Divider()
+                        .background(Color.white.opacity(0.08))
+                }
                 
                 // Results
-                if !manager.searchResults.isEmpty {
+                switch searchPanelState {
+                case .results:
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(manager.searchResults.enumerated()), id: \.element.id) { index, result in
                                 SearchResultRow(
                                     result: result,
+                                    query: manager.searchQuery,
                                     isSelected: index == selectedSearchResultIndex,
                                     isOpening: openingSearchResultFrameId == result.frameId
                                 )
+                                    .onHover { isHovering in
+                                        if isHovering {
+                                            selectedSearchResultIndex = index
+                                        }
+                                    }
                                     .onTapGesture {
                                         openSearchResult(result, selectedIndex: index)
                                     }
@@ -738,7 +771,7 @@ struct ContentView: View {
                         }
                     }
                     .frame(maxHeight: 400)
-                } else if manager.isPreparingSearchHistory || (manager.isSearchRunning && manager.searchQuery.count >= 2) {
+                case .loading:
                     VStack(spacing: 12) {
                         ProgressView()
                             .controlSize(.small)
@@ -747,7 +780,7 @@ struct ContentView: View {
                             .foregroundColor(.white.opacity(0.6))
                     }
                     .frame(height: 150)
-                } else if !manager.searchQuery.isEmpty && manager.searchQuery.count >= 2 {
+                case .empty:
                     VStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 40))
@@ -755,9 +788,31 @@ struct ContentView: View {
                         Text(L.noResults(manager.searchQuery))
                             .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.5))
+                        Button(manager.useSemanticSearch ? L.searchTryText : L.searchTrySemantic) {
+                            setSearchMode(semantic: !manager.useSemanticSearch)
+                            retryCurrentSearch()
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .frame(height: 150)
-                } else {
+                case .error(let message):
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 34))
+                            .foregroundColor(.orange.opacity(0.9))
+                        Text(L.searchErrorTitle)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                        Text(message)
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.6))
+                        Button(L.searchRetry) {
+                            retryCurrentSearch()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .frame(height: 180)
+                case .idle:
                     VStack(spacing: 12) {
                         Image(systemName: "text.magnifyingglass")
                             .font(.system(size: 40))
@@ -769,14 +824,14 @@ struct ContentView: View {
                     .frame(height: 150)
                 }
             }
-            .frame(width: 620)
+            .frame(width: TimelineVisualTokens.searchPanelWidth)
             .background(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: TimelineVisualTokens.searchPanelCornerRadius)
                     .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.98)))
                     .shadow(color: .black.opacity(0.5), radius: 40, y: 15)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: TimelineVisualTokens.searchPanelCornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
         }
@@ -905,6 +960,7 @@ struct ContentView: View {
     private func openSearchOverlay() {
         openingSearchResultFrameId = nil
         selectedSearchResultIndex = 0
+        manager.searchErrorMessage = nil
         withAnimation { manager.isSearching = true }
     }
 
@@ -920,6 +976,96 @@ struct ContentView: View {
         guard !manager.searchResults.isEmpty else { return }
         let next = selectedSearchResultIndex + delta
         selectedSearchResultIndex = min(max(0, next), manager.searchResults.count - 1)
+    }
+
+    private var selectedSearchResult: TimelineManager.SearchResult? {
+        guard selectedSearchResultIndex >= 0, selectedSearchResultIndex < manager.searchResults.count else {
+            return nil
+        }
+        return manager.searchResults[selectedSearchResultIndex]
+    }
+
+    private var searchPanelState: SearchPanelState {
+        if let error = manager.searchErrorMessage, !error.isEmpty {
+            return .error(error)
+        }
+        if !manager.searchResults.isEmpty {
+            return .results
+        }
+        if manager.isPreparingSearchHistory || (manager.isSearchRunning && manager.searchQuery.count >= 2) {
+            return .loading
+        }
+        if manager.searchQuery.count >= 2 {
+            return .empty
+        }
+        return .idle
+    }
+
+    private func setSearchMode(semantic: Bool) {
+        guard manager.useSemanticSearch != semantic else { return }
+        manager.useSemanticSearch = semantic
+        manager.searchResults = []
+        manager.searchErrorMessage = nil
+        selectedSearchResultIndex = 0
+    }
+
+    private func retryCurrentSearch() {
+        guard manager.searchQuery.count >= 2 else { return }
+        if manager.useSemanticSearch {
+            manager.semanticSearch(manager.searchQuery)
+        } else {
+            manager.search(manager.searchQuery)
+        }
+    }
+
+    @ViewBuilder
+    private func searchPreviewSection(result: TimelineManager.SearchResult) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(L.searchPreviewTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.82))
+                    Text(result.matchType.label)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(result.matchType.badgeColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(result.matchType.badgeColor.opacity(0.18))
+                        )
+                }
+
+                Text(result.appName.isEmpty ? L.searchPreviewHint : "\(result.appName) · \(formatTimeDisplay(result.timestamp))")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+                    .lineLimit(1)
+
+                Text(result.text)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Button(L.searchOpenSelected) {
+                openSearchResult(result, selectedIndex: selectedSearchResultIndex)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(openingSearchResultFrameId != nil)
+            .accessibilityLabel(L.searchOpenSelected)
+            .accessibilityHint(L.searchPreviewHint)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: TimelineVisualTokens.searchPreviewCornerRadius)
+                .fill(Color.white.opacity(0.04))
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func openSelectedSearchResult() {
@@ -942,6 +1088,8 @@ struct ContentView: View {
             openingSearchResultFrameId = nil
             if success {
                 closeSearchOverlay()
+            } else {
+                manager.searchErrorMessage = L.searchOpenError
             }
         }
     }
@@ -1045,6 +1193,7 @@ struct ControlButtonView: View {
 // MARK: - Search Result Row
 struct SearchResultRow: View {
     let result: TimelineManager.SearchResult
+    var query: String = ""
     var isSelected: Bool = false
     var isOpening: Bool = false
     @State private var isHovered = false
@@ -1071,10 +1220,15 @@ struct SearchResultRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Match type indicator + app name
                 HStack(spacing: 6) {
-                    // Match type icon
-                    Image(systemName: matchTypeIcon)
-                        .font(.system(size: 10))
-                        .foregroundColor(matchTypeColor)
+                    Text(result.matchType.label)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(result.matchType.badgeColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(result.matchType.badgeColor.opacity(0.18))
+                        )
                     
                     // Similarity score for semantic search
                     if result.score > 0 {
@@ -1092,13 +1246,13 @@ struct SearchResultRow: View {
                 
                 // URL if available
                 if let url = result.url, !url.isEmpty {
-                    Text(formatURL(url))
+                    highlightedText(formatURL(url), query: query)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.cyan.opacity(0.7))
                         .lineLimit(1)
                 }
                 
-                Text(cleanupText(result.text))
+                highlightedText(cleanupText(result.text), query: query)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.9))
                     .lineLimit(2)
@@ -1121,34 +1275,18 @@ struct SearchResultRow: View {
         .padding(.vertical, 10)
         .background(isSelected ? Color.blue.opacity(0.20) : (isHovered ? Color.white.opacity(0.06) : Color.clear))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: TimelineVisualTokens.searchRowCornerRadius)
                 .stroke(isSelected ? Color.blue.opacity(0.55) : Color.clear, lineWidth: 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: TimelineVisualTokens.searchRowCornerRadius))
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
-    }
-    
-    // Match type icon
-    private var matchTypeIcon: String {
-        switch result.matchType {
-        case .url: return "link"
-        case .title: return "textformat"
-        case .clipboard: return "doc.on.clipboard"
-        case .ocr: return "text.viewfinder"
-        }
-    }
-    
-    // Match type color
-    private var matchTypeColor: Color {
-        switch result.matchType {
-        case .url: return .cyan
-        case .title: return .orange
-        case .clipboard: return .green
-        case .ocr: return .white.opacity(0.5)
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint(L.searchOpenSelected)
     }
     
     // Format URL to show domain
@@ -1218,6 +1356,67 @@ struct SearchResultRow: View {
         // Return first meaningful lines
         let result = lines.prefix(3).joined(separator: " · ")
         return result.isEmpty ? text.prefix(80).description : result
+    }
+
+    private func highlightedText(_ source: String, query: String) -> Text {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return Text(source)
+        }
+
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else {
+            return Text(source)
+        }
+
+        var cursor = source.startIndex
+        var combined = Text("")
+
+        while cursor < source.endIndex,
+              let range = source.range(
+                  of: normalizedQuery,
+                  options: [.caseInsensitive, .diacriticInsensitive],
+                  range: cursor..<source.endIndex
+              ) {
+            if cursor < range.lowerBound {
+                combined = combined + Text(String(source[cursor..<range.lowerBound]))
+            }
+            combined = combined + Text(String(source[range]))
+                .fontWeight(.semibold)
+                .foregroundColor(.yellow.opacity(0.95))
+            cursor = range.upperBound
+        }
+
+        if cursor < source.endIndex {
+            combined = combined + Text(String(source[cursor..<source.endIndex]))
+        }
+        return combined
+    }
+
+    private var accessibilitySummary: String {
+        let date = formatDate(result.timestamp)
+        let time = formatTime(result.timestamp)
+        let app = result.appName.isEmpty ? "" : "\(result.appName), "
+        return "\(result.matchType.label), \(date) \(time), \(app)\(cleanupText(result.text))"
+    }
+}
+
+private extension TimelineManager.SearchResult.MatchType {
+    var label: String {
+        switch self {
+        case .ocr: return "OCR"
+        case .url: return "URL"
+        case .title: return "TITLE"
+        case .clipboard: return "CLIP"
+        }
+    }
+
+    var badgeColor: Color {
+        switch self {
+        case .url: return .cyan
+        case .title: return .orange
+        case .clipboard: return .green
+        case .ocr: return .white.opacity(0.75)
+        }
     }
 }
 

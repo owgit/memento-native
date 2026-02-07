@@ -41,6 +41,15 @@ enum L {
     static var semanticPlaceholder: String { isSwedish ? "Beskriv vad du letar efter..." : "Describe what you're looking for..." }
     static var searching: String { isSwedish ? "Söker..." : "Searching..." }
     static var searchHintShortcuts: String { isSwedish ? "↑↓ välj, Enter öppna, Esc stäng" : "↑↓ select, Enter open, Esc close" }
+    static var searchOpenSelected: String { isSwedish ? "Öppna vald träff" : "Open selected match" }
+    static var searchPreviewTitle: String { isSwedish ? "Förhandsvisning" : "Preview" }
+    static var searchPreviewHint: String { isSwedish ? "Kontrollera träffen innan hopp" : "Check the match before jump" }
+    static var searchRetry: String { isSwedish ? "Försök igen" : "Try again" }
+    static var searchTrySemantic: String { isSwedish ? "Prova semantisk sökning" : "Try semantic search" }
+    static var searchTryText: String { isSwedish ? "Prova textsökning" : "Try text search" }
+    static var searchDatabaseError: String { isSwedish ? "Kunde inte läsa sökdatabasen. Prova igen." : "Could not read search database. Try again." }
+    static var searchOpenError: String { isSwedish ? "Kunde inte öppna träffen. Ladda äldre historik och försök igen." : "Could not open this match. Load older history and try again." }
+    static var searchErrorTitle: String { isSwedish ? "Sökningen misslyckades" : "Search failed" }
     static var loadedPrefix: String { isSwedish ? "Laddat" : "Loaded" }
     static var loadingOlderHistory: String { isSwedish ? "Laddar äldre historik..." : "Loading older history..." }
     static var olderHistoryHintShort: String { isSwedish ? "← för äldre" : "← for older" }

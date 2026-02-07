@@ -21,6 +21,7 @@ class TimelineManager: ObservableObject {
     @Published var useSemanticSearch: Bool = false
     @Published var isPreparingSearchHistory: Bool = false
     @Published var isSearchRunning: Bool = false
+    @Published var searchErrorMessage: String?
     
     struct TextBlock: Identifiable {
         let id = UUID()
@@ -690,10 +691,12 @@ class TimelineManager: ObservableObject {
             searchResults = []
             isPreparingSearchHistory = false
             isSearchRunning = false
+            searchErrorMessage = nil
             return
         }
 
         isSearchRunning = true
+        searchErrorMessage = nil
         
         // Run search on background thread
         searchTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -715,6 +718,7 @@ class TimelineManager: ObservableObject {
         
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            searchErrorMessage = L.searchDatabaseError
             return []
         }
         defer { sqlite3_close(db) }
@@ -841,10 +845,12 @@ class TimelineManager: ObservableObject {
             searchResults = []
             isPreparingSearchHistory = false
             isSearchRunning = false
+            searchErrorMessage = nil
             return
         }
 
         isSearchRunning = true
+        searchErrorMessage = nil
         
         semanticSearchTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
@@ -869,7 +875,10 @@ class TimelineManager: ObservableObject {
         let queryQuantized = embeddingService.quantize(queryVector)
         
         var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            searchErrorMessage = L.searchDatabaseError
+            return []
+        }
         defer { sqlite3_close(db) }
         
         // Search all available embeddings to avoid recency bias.
