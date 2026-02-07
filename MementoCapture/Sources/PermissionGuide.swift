@@ -71,6 +71,7 @@ struct SetupHubView: View {
     @State private var hasPermission = false
     @State private var checkingPermission = false
     @State private var repairingPermission = false
+    @State private var permissionPollTimer: Timer?
     @State private var repairStatusMessage: String?
     @State private var repairStatusIsError = false
 
@@ -119,6 +120,10 @@ struct SetupHubView: View {
         }
         .frame(width: 620, height: 700)
         .onAppear { checkPermission() }
+        .onDisappear {
+            permissionPollTimer?.invalidate()
+            permissionPollTimer = nil
+        }
     }
 
     private var headerSection: some View {
@@ -197,25 +202,25 @@ struct SetupHubView: View {
                 .font(.headline)
 
             HStack(spacing: 10) {
-                Button(action: openSystemSettings) {
-                    Label(isSwedish ? "Öppna Inställningar" : "Open Settings", systemImage: "gear")
-                }
-                .buttonStyle(.borderedProminent)
-
                 Button(action: repairPermissionsAfterUpdate) {
                     if repairingPermission {
                         ProgressView()
                             .controlSize(.small)
                             .frame(minWidth: 130)
                     } else {
-                        Label(isSwedish ? "Reparera behörighet" : "Repair Permission", systemImage: "arrow.clockwise.circle")
+                        Label(
+                            hasPermission
+                                ? (isSwedish ? "Kontrollera status" : "Check Status")
+                                : (isSwedish ? "Fixa automatiskt" : "Fix Automatically"),
+                            systemImage: hasPermission ? "arrow.clockwise" : "wand.and.stars"
+                        )
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .disabled(repairingPermission)
 
-                Button(action: copyTerminalCommand) {
-                    Label(isSwedish ? "Kopiera kommando" : "Copy Command", systemImage: "terminal")
+                Button(action: openSystemSettings) {
+                    Label(isSwedish ? "Öppna Inställningar" : "Open Settings", systemImage: "gear")
                 }
                 .buttonStyle(.bordered)
             }
@@ -226,6 +231,12 @@ struct SetupHubView: View {
                     .foregroundColor(repairStatusIsError ? .orange : .green)
                     .padding(.top, 2)
             }
+
+            Button(action: copyTerminalCommand) {
+                Text(isSwedish ? "Avancerat: Kopiera Terminal-kommando" : "Advanced: Copy terminal command")
+                    .font(.caption)
+            }
+            .buttonStyle(.link)
         }
     }
 
@@ -317,6 +328,15 @@ struct SetupHubView: View {
     }
 
     private func repairPermissionsAfterUpdate() {
+        if hasPermission {
+            checkPermission()
+            repairStatusIsError = false
+            repairStatusMessage = isSwedish
+                ? "Behörighet är redan aktiv."
+                : "Permission is already active."
+            return
+        }
+
         guard !repairingPermission else { return }
         repairingPermission = true
         repairStatusMessage = nil
@@ -327,14 +347,8 @@ struct SetupHubView: View {
 
             DispatchQueue.main.async {
                 repairingPermission = false
-                openSystemSettings()
-                checkPermission()
-
                 if success {
-                    repairStatusMessage = isSwedish
-                        ? "Klart. Aktivera Memento Capture och starta om appen."
-                        : "Done. Enable Memento Capture and restart the app."
-                    repairStatusIsError = false
+                    requestPermissionFromSystem(afterReset: true)
                 } else {
                     repairStatusMessage = isSwedish
                         ? "Kunde inte köra reset automatiskt. Använd kommandoknappen."
@@ -342,6 +356,61 @@ struct SetupHubView: View {
                     repairStatusIsError = true
                 }
             }
+        }
+    }
+
+    private func requestPermissionFromSystem(afterReset: Bool = false) {
+        repairStatusIsError = false
+
+        if hasPermission {
+            repairStatusMessage = isSwedish
+                ? "Behörighet är redan aktiv."
+                : "Permission is already active."
+            return
+        }
+
+        let grantedImmediately = CGRequestScreenCaptureAccess()
+        checkPermission()
+
+        if grantedImmediately || hasPermission {
+            repairStatusMessage = isSwedish
+                ? "Behörighet aktiverad."
+                : "Permission enabled."
+            return
+        }
+
+        openSystemSettings()
+        startPermissionPolling()
+        repairStatusMessage = isSwedish
+            ? (afterReset
+                ? "Förfrågan skickad. Aktivera Memento Capture i listan i Systeminställningar."
+                : "Förfrågan skickad. Godkänn och aktivera Memento Capture i Systeminställningar.")
+            : (afterReset
+                ? "Request sent. Enable Memento Capture in the list in System Settings."
+                : "Request sent. Approve and enable Memento Capture in System Settings.")
+    }
+
+    private func startPermissionPolling() {
+        permissionPollTimer?.invalidate()
+
+        var attempts = 0
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            attempts += 1
+            checkPermission()
+            if hasPermission || attempts >= 30 {
+                timer.invalidate()
+                permissionPollTimer = nil
+                if hasPermission {
+                    repairStatusIsError = false
+                    repairStatusMessage = isSwedish
+                        ? "Behörighet registrerad. Starta om appen en gång."
+                        : "Permission detected. Restart the app once."
+                }
+            }
+        }
+
+        if let permissionPollTimer {
+            RunLoop.main.add(permissionPollTimer, forMode: .common)
         }
     }
 
