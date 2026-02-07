@@ -2,6 +2,18 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [1.0.5] - 2026-02-07
+
+### Added
+- In-app update checks against latest GitHub release with menu action support
+- Local macOS notification when a new app version is available
+- Menubar warning icon/status when screen recording permission is missing
+
+### Improved
+- Permission guide now keeps actions visible in a fixed footer (no extra scrolling)
+- Permission guide text is clearer in both Swedish and English
+- Onboarding permission visuals use a more neutral, consistent accent style
+
 ## [1.0.4] - 2026-02-07
 
 ### Added

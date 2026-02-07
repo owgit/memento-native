@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SQLite3
+import UserNotifications
 
 /// Menu bar icon manager for Memento Capture
 @MainActor
@@ -8,11 +9,25 @@ class MenuBarManager {
     private var statusItem: NSStatusItem?
     private var isCapturing = true
     private var captureService: CaptureService?
+    private var hasScreenPermission = ScreenshotCapture.hasPermission()
+    private var permissionMonitorTimer: Timer?
+    private var updateTimer: Timer?
+    private var isCheckingUpdates = false
+    private var availableReleaseVersion: String?
+    private var availableReleaseURL: URL?
+
+    private let updateMenuTag = 103
+    private let permissionCheckInterval: TimeInterval = 5
+    private let updateCheckInterval: TimeInterval = 6 * 60 * 60
+    private let updateAPIURL = URL(string: "https://api.github.com/repos/owgit/memento-native/releases/latest")!
+    private let fallbackReleaseURL = URL(string: "https://github.com/owgit/memento-native/releases/latest")!
+    private let lastNotifiedUpdateVersionKey = "lastNotifiedUpdateVersion"
     
     init() {}
     
     func setup(captureService: CaptureService) {
         self.captureService = captureService
+        hasScreenPermission = ScreenshotCapture.hasPermission()
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
@@ -23,6 +38,9 @@ class MenuBarManager {
         }
         
         setupMenu()
+        refreshPermissionState(forceIconUpdate: true)
+        startPermissionMonitoring()
+        startUpdateChecks()
     }
     
     private func setupMenu() {
@@ -50,6 +68,12 @@ class MenuBarManager {
         let settingsItem = NSMenuItem(title: L.settingsMenu, action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        // Update check
+        let updateItem = NSMenuItem(title: L.checkForUpdates, action: #selector(handleUpdateMenuAction), keyEquivalent: "")
+        updateItem.target = self
+        updateItem.tag = updateMenuTag
+        menu.addItem(updateItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -104,17 +128,22 @@ class MenuBarManager {
     
     private func updateIcon() {
         if let button = statusItem?.button {
-            if isCapturing {
+            if !hasScreenPermission {
+                button.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: "Permission required")
+                button.toolTip = L.permissionMissingStatus
+            } else if isCapturing {
                 button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Recording")
+                button.toolTip = nil
             } else {
                 button.image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "Paused")
+                button.toolTip = nil
             }
             button.image?.isTemplate = true
         }
         
         // Update menu items
         if let menu = statusItem?.menu {
-            menu.item(withTag: 100)?.title = isCapturing ? L.recording : L.paused
+            menu.item(withTag: 100)?.title = hasScreenPermission ? (isCapturing ? L.recording : L.paused) : L.permissionMissingStatus
             menu.item(withTag: 101)?.title = isCapturing ? L.pauseRecording : L.resumeRecording
         }
     }
@@ -147,6 +176,283 @@ class MenuBarManager {
     
     @objc private func openSettings() {
         SettingsWindowController.shared.show()
+    }
+
+    // MARK: - Updates
+
+    private struct GitHubRelease: Decodable {
+        let tagName: String
+        let htmlURL: String
+        let draft: Bool
+        let prerelease: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case tagName = "tag_name"
+            case htmlURL = "html_url"
+            case draft
+            case prerelease
+        }
+    }
+
+    @objc private func handleUpdateMenuAction() {
+        if let version = availableReleaseVersion,
+           isRemoteVersionNewer(version, than: currentVersionString()),
+           let releaseURL = availableReleaseURL {
+            NSWorkspace.shared.open(releaseURL)
+            return
+        }
+
+        checkForUpdates(silent: false)
+    }
+
+    private func startUpdateChecks() {
+        refreshUpdateMenuItem()
+        checkForUpdates(silent: true)
+
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: updateCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkForUpdates(silent: true)
+            }
+        }
+        if let updateTimer {
+            RunLoop.main.add(updateTimer, forMode: .common)
+        }
+    }
+
+    private func startPermissionMonitoring() {
+        permissionMonitorTimer?.invalidate()
+        permissionMonitorTimer = Timer.scheduledTimer(withTimeInterval: permissionCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPermissionState()
+            }
+        }
+        if let permissionMonitorTimer {
+            RunLoop.main.add(permissionMonitorTimer, forMode: .common)
+        }
+    }
+
+    private func refreshPermissionState(forceIconUpdate: Bool = false) {
+        let latestPermission = ScreenshotCapture.hasPermission()
+        let changed = latestPermission != hasScreenPermission
+        hasScreenPermission = latestPermission
+        updatePermissionMenuItem()
+        if changed || forceIconUpdate {
+            updateIcon()
+        }
+    }
+
+    private func checkForUpdates(silent: Bool) {
+        guard !isCheckingUpdates else { return }
+        isCheckingUpdates = true
+        refreshUpdateMenuItem()
+
+        Task {
+            do {
+                let release = try await fetchLatestRelease()
+                handleUpdateSuccess(release, silent: silent)
+            } catch {
+                handleUpdateFailure(error, silent: silent)
+            }
+        }
+    }
+
+    private func fetchLatestRelease() async throws -> GitHubRelease {
+        var request = URLRequest(url: updateAPIURL)
+        request.timeoutInterval = 15
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("MementoCapture", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "UpdateCheck", code: 1)
+        }
+
+        return try JSONDecoder().decode(GitHubRelease.self, from: data)
+    }
+
+    private func handleUpdateSuccess(_ release: GitHubRelease, silent: Bool) {
+        isCheckingUpdates = false
+
+        // Ignore pre-release/draft for end users.
+        guard !release.draft, !release.prerelease else {
+            availableReleaseVersion = nil
+            availableReleaseURL = nil
+            refreshUpdateMenuItem()
+            if !silent {
+                showUpToDateAlert(localVersion: currentVersionString())
+            }
+            return
+        }
+
+        let remoteVersion = release.tagName
+        let localVersion = currentVersionString()
+
+        if isRemoteVersionNewer(remoteVersion, than: localVersion) {
+            availableReleaseVersion = remoteVersion
+            availableReleaseURL = URL(string: release.htmlURL) ?? fallbackReleaseURL
+            refreshUpdateMenuItem()
+
+            if silent {
+                maybeNotifyForUpdate(version: remoteVersion)
+            } else if let releaseURL = availableReleaseURL {
+                showUpdateAvailableAlert(localVersion: localVersion, remoteVersion: remoteVersion, releaseURL: releaseURL)
+            }
+            return
+        }
+
+        availableReleaseVersion = nil
+        availableReleaseURL = nil
+        refreshUpdateMenuItem()
+
+        if !silent {
+            showUpToDateAlert(localVersion: localVersion)
+        }
+    }
+
+    private func handleUpdateFailure(_ error: Error, silent: Bool) {
+        isCheckingUpdates = false
+        refreshUpdateMenuItem()
+
+        if !silent {
+            let alert = NSAlert()
+            alert.messageText = L.updateCheckFailedTitle
+            alert.informativeText = L.updateCheckFailedMessage + "\n\n\(error.localizedDescription)"
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L.ok)
+            alert.runModal()
+        }
+    }
+
+    private func refreshUpdateMenuItem() {
+        guard let menu = statusItem?.menu,
+              let item = menu.item(withTag: updateMenuTag) else { return }
+
+        if isCheckingUpdates {
+            item.title = L.checkingForUpdates
+            item.isEnabled = false
+            return
+        }
+
+        if let version = availableReleaseVersion,
+           isRemoteVersionNewer(version, than: currentVersionString()) {
+            item.title = L.updateAvailableMenu(version)
+            item.isEnabled = true
+            return
+        }
+
+        item.title = L.checkForUpdates
+        item.isEnabled = true
+    }
+
+    private func currentVersionString() -> String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+    }
+
+    private func isRemoteVersionNewer(_ remote: String, than local: String) -> Bool {
+        guard let remoteComponents = parseVersionComponents(remote),
+              let localComponents = parseVersionComponents(local) else {
+            return false
+        }
+
+        let maxCount = max(remoteComponents.count, localComponents.count)
+        for index in 0..<maxCount {
+            let remotePart = index < remoteComponents.count ? remoteComponents[index] : 0
+            let localPart = index < localComponents.count ? localComponents[index] : 0
+            if remotePart != localPart {
+                return remotePart > localPart
+            }
+        }
+        return false
+    }
+
+    private func parseVersionComponents(_ version: String) -> [Int]? {
+        var cleaned = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.lowercased().hasPrefix("v") {
+            cleaned.removeFirst()
+        }
+        if let suffixIndex = cleaned.firstIndex(of: "-") {
+            cleaned = String(cleaned[..<suffixIndex])
+        }
+
+        let parts = cleaned.split(separator: ".")
+        guard !parts.isEmpty else { return nil }
+
+        var numbers: [Int] = []
+        numbers.reserveCapacity(parts.count)
+        for part in parts {
+            let digits = part.prefix { $0.isNumber }
+            guard !digits.isEmpty, let value = Int(digits) else { return nil }
+            numbers.append(value)
+        }
+        return numbers
+    }
+
+    private func maybeNotifyForUpdate(version: String) {
+        let defaults = UserDefaults.standard
+        if defaults.string(forKey: lastNotifiedUpdateVersionKey) == version {
+            return
+        }
+
+        defaults.set(version, forKey: lastNotifiedUpdateVersionKey)
+        postUpdateNotification(version: version)
+    }
+
+    private func postUpdateNotification(version: String) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized:
+                Task { @MainActor in
+                    self.enqueueUpdateNotification(version: version)
+                }
+            case .notDetermined:
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    guard granted else { return }
+                    Task { @MainActor in
+                        self.enqueueUpdateNotification(version: version)
+                    }
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    private func enqueueUpdateNotification(version: String) {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = L.updateNotificationTitle
+        content.body = L.updateNotificationBody(version)
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "memento-update-\(version)",
+            content: content,
+            trigger: nil
+        )
+        center.add(request, withCompletionHandler: nil)
+    }
+
+    private func showUpdateAvailableAlert(localVersion: String, remoteVersion: String, releaseURL: URL) {
+        let alert = NSAlert()
+        alert.messageText = L.updateAvailableTitle
+        alert.informativeText = L.updateAvailableMessage(localVersion, remoteVersion)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L.openReleasePage)
+        alert.addButton(withTitle: L.later)
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(releaseURL)
+        }
+    }
+
+    private func showUpToDateAlert(localVersion: String) {
+        let alert = NSAlert()
+        alert.messageText = L.upToDateTitle
+        alert.informativeText = L.upToDateMessage(localVersion)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L.ok)
+        alert.runModal()
     }
     
     @objc private func showStats() {
@@ -291,13 +597,12 @@ class MenuBarManager {
     
     @objc private func checkPermission() {
         PermissionGuideController.shared.show()
-        updatePermissionMenuItem()
+        refreshPermissionState(forceIconUpdate: true)
     }
     
     private func updatePermissionMenuItem() {
         if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
-            let hasPermission = ScreenshotCapture.hasPermission()
-            item.title = hasPermission ? L.permissionsOk : L.permissionsMissing
+            item.title = hasScreenPermission ? L.permissionsOk : L.permissionsMissing
         }
     }
     
@@ -308,6 +613,10 @@ class MenuBarManager {
     }
     
     @objc private func quitApp() {
+        permissionMonitorTimer?.invalidate()
+        permissionMonitorTimer = nil
+        updateTimer?.invalidate()
+        updateTimer = nil
         captureService?.stop()
         NSApp.terminate(nil)
     }

@@ -283,7 +283,7 @@ struct OnboardingView: View {
             
             Image(systemName: hasPermission ? "checkmark.shield.fill" : "shield.fill")
                 .font(.system(size: 64))
-                .foregroundColor(hasPermission ? .green : .orange)
+                .foregroundColor(hasPermission ? .green : .accentColor)
             
             Text(hasPermission ? L.permissionReady : L.permissionNeeded)
                 .font(.title)
@@ -309,7 +309,6 @@ struct OnboardingView: View {
                     .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
                 
                 Text(L.permissionAdd)
                     .font(.caption)

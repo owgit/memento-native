@@ -14,11 +14,38 @@ enum L {
     static var resumeRecording: String { isSwedish ? "Fortsätt inspelning" : "Resume Recording" }
     static var openTimeline: String { isSwedish ? "Öppna Timeline" : "Open Timeline" }
     static var permissions: String { isSwedish ? "Behörigheter..." : "Permissions..." }
+    static var permissionMissingStatus: String { isSwedish ? "⚠ Behörighet för skärminspelning saknas" : "⚠ Screen Recording permission missing" }
     static var statistics: String { isSwedish ? "Statistik..." : "Statistics..." }
     static var cleanOldFrames: String { isSwedish ? "Rensa gamla frames..." : "Clean Old Frames..." }
     static var saveDebugScreenshot: String { isSwedish ? "Spara debug-skärmdump" : "Save Debug Screenshot" }
     static var quitMemento: String { isSwedish ? "Avsluta Memento" : "Quit Memento" }
     static var settingsMenu: String { isSwedish ? "Inställningar..." : "Settings..." }
+    static var checkForUpdates: String { isSwedish ? "Sök uppdatering..." : "Check for Updates..." }
+    static var checkingForUpdates: String { isSwedish ? "Söker uppdatering..." : "Checking for updates..." }
+    static func updateAvailableMenu(_ version: String) -> String {
+        isSwedish ? "Uppdatering tillgänglig: \(version)" : "Update available: \(version)"
+    }
+    static var updateAvailableTitle: String { isSwedish ? "Ny version finns" : "New version available" }
+    static func updateAvailableMessage(_ local: String, _ remote: String) -> String {
+        if isSwedish {
+            return "Nuvarande version: \(local)\nNy version: \(remote)"
+        }
+        return "Current version: \(local)\nNew version: \(remote)"
+    }
+    static var upToDateTitle: String { isSwedish ? "Du har senaste versionen" : "You're up to date" }
+    static func upToDateMessage(_ local: String) -> String {
+        isSwedish ? "Du kör redan senaste versionen (\(local))." : "You're already running the latest version (\(local))."
+    }
+    static var updateCheckFailedTitle: String { isSwedish ? "Kunde inte kontrollera uppdatering" : "Could not check for updates" }
+    static var updateCheckFailedMessage: String {
+        isSwedish ? "Kontrollera internetanslutningen och försök igen." : "Check your internet connection and try again."
+    }
+    static var openReleasePage: String { isSwedish ? "Öppna release-sida" : "Open release page" }
+    static var later: String { isSwedish ? "Senare" : "Later" }
+    static var updateNotificationTitle: String { isSwedish ? "Memento-uppdatering finns" : "Memento update available" }
+    static func updateNotificationBody(_ version: String) -> String {
+        isSwedish ? "Version \(version) finns att ladda ner." : "Version \(version) is ready to download."
+    }
     
     // MARK: - Permissions
     static var permissionsOk: String { isSwedish ? "✓ Behörigheter OK" : "✓ Permissions OK" }
@@ -145,4 +172,3 @@ enum L {
     static var back: String { isSwedish ? "Tillbaka" : "Back" }
     static var next: String { isSwedish ? "Nästa" : "Next" }
 }
-
