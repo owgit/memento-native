@@ -15,11 +15,6 @@ class ScreenshotCapture {
         return CGPreflightScreenCaptureAccess()
     }
     
-    /// Request screen recording permission
-    static func requestPermission() {
-        CGRequestScreenCaptureAccess()
-    }
-    
     /// Open System Preferences to Screen Recording settings
     static func openPermissionSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {

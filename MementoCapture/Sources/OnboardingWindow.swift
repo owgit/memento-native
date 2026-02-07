@@ -325,8 +325,6 @@ struct OnboardingView: View {
     }
     
     private func openScreenRecordingSettings() {
-        CGRequestScreenCaptureAccess()
-        
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }

@@ -8,6 +8,7 @@ import UserNotifications
 class MenuBarManager {
     private var statusItem: NSStatusItem?
     private var isCapturing = true
+    private var isCaptureServiceRunning = false
     private var captureService: CaptureService?
     private var hasScreenPermission = ScreenshotCapture.hasPermission()
     private var permissionMonitorTimer: Timer?
@@ -39,6 +40,7 @@ class MenuBarManager {
         
         setupMenu()
         refreshPermissionState(forceIconUpdate: true)
+        syncCaptureServiceState()
         startPermissionMonitoring()
         startUpdateChecks()
     }
@@ -150,11 +152,7 @@ class MenuBarManager {
     
     @objc private func toggleCapture() {
         isCapturing.toggle()
-        if isCapturing {
-            captureService?.start()
-        } else {
-            captureService?.stop()
-        }
+        syncCaptureServiceState()
         updateIcon()
     }
     
@@ -236,10 +234,26 @@ class MenuBarManager {
         let latestPermission = ScreenshotCapture.hasPermission()
         let changed = latestPermission != hasScreenPermission
         hasScreenPermission = latestPermission
+        syncCaptureServiceState()
         updatePermissionMenuItem()
         if changed || forceIconUpdate {
             updateIcon()
         }
+    }
+
+    private func syncCaptureServiceState() {
+        let shouldRun = isCapturing && hasScreenPermission
+        setCaptureServiceRunning(shouldRun)
+    }
+
+    private func setCaptureServiceRunning(_ shouldRun: Bool) {
+        guard shouldRun != isCaptureServiceRunning else { return }
+        if shouldRun {
+            captureService?.start()
+        } else {
+            captureService?.stop()
+        }
+        isCaptureServiceRunning = shouldRun
     }
 
     private func checkForUpdates(silent: Bool) {
@@ -617,7 +631,7 @@ class MenuBarManager {
         permissionMonitorTimer = nil
         updateTimer?.invalidate()
         updateTimer = nil
-        captureService?.stop()
+        setCaptureServiceRunning(false)
         NSApp.terminate(nil)
     }
 }

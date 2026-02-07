@@ -10,9 +10,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("🚀 Memento Capture Service starting...")
 
-        // Start capture service
+        // Initialize capture service (actual start is permission-gated in MenuBarManager)
         let service = CaptureService.shared
-        service.start()
         
         // Setup menu bar icon
         menuBarManager = MenuBarManager()

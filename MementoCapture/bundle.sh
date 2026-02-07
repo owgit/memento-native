@@ -61,8 +61,8 @@ if [ -f "$BINARY_PATH" ]; then
     sign_app
     echo "✅ Binary updated (build $BUILD_NUMBER)"
     echo ""
-    echo "ℹ️  If screen capture stops working, use the in-app Permission Guide"
-    echo "   (Menu > Permissions... > follow instructions)"
+    echo "ℹ️  If screen capture stops working, use the in-app Setup Hub"
+    echo "   (Menu > Setup Hub... > follow instructions)"
     exit 0
 fi
 

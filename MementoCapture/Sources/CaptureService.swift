@@ -54,6 +54,8 @@ class CaptureService {
     }
     
     func start() {
+        guard timer == nil else { return }
+
         print("▶️  Starting capture service...")
         print("   Interval: \(captureInterval)s")
         print("   Resolution: Auto-detect")

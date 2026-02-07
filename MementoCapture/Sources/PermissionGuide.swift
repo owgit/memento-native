@@ -328,7 +328,6 @@ struct SetupHubView: View {
             DispatchQueue.main.async {
                 repairingPermission = false
                 openSystemSettings()
-                CGRequestScreenCaptureAccess()
                 checkPermission()
 
                 if success {
