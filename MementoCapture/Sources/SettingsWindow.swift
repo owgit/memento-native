@@ -173,7 +173,7 @@ struct SettingsView: View {
                     PermissionGuideController.shared.show()
                 }) {
                     HStack {
-                        Image(systemName: "wand.and.stars")
+                        Image(systemName: "checklist")
                         Text(L.fixPermissionsAfterUpdate)
                         Spacer()
                         Image(systemName: "arrow.up.right")
@@ -317,6 +317,6 @@ private extension L {
     static var storageMigrationFailed: String { isSwedish ? "Migrering misslyckades" : "Migration failed" }
     static var system: String { isSwedish ? "System" : "System" }
     static var autoStart: String { isSwedish ? "Starta vid inloggning" : "Start at login" }
-    static var fixPermissionsAfterUpdate: String { isSwedish ? "Fixa behörighet efter uppdatering" : "Fix permissions after update" }
+    static var fixPermissionsAfterUpdate: String { isSwedish ? "Öppna Setup Hub" : "Open Setup Hub" }
     static var support: String { isSwedish ? "Stöd" : "Support" }
 }

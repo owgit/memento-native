@@ -40,42 +40,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let isUpdate = previousVersion != nil && previousVersion != currentVersion
         defaults.set(currentVersion, forKey: lastLaunchVersionKey)
 
-        let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
         let hasPermission = CGPreflightScreenCaptureAccess()
         
-        // First launch should open the guide directly so permissions are handled in one place.
+        // Unified setup hub handles first launch, updates, and permission recovery.
         if isFirstLaunch {
-            PermissionGuideController.shared.show()
+            PermissionGuideController.shared.show(reason: .firstLaunch)
             return
         }
 
-        // If permission is missing on any later launch, only show the guide (avoid double popups).
         if !hasPermission {
-            PermissionGuideController.shared.show()
+            PermissionGuideController.shared.show(reason: .permissionMissing)
             return
         }
 
-        guard isUpdate, let previousVersion else { return }
-
-        let alert = NSAlert()
-        if isSwedish {
-            alert.messageText = "Memento uppdaterad till \(shortVersion)"
-            alert.informativeText = hasPermission
-                ? "Version \(previousVersion) → \(currentVersion).\nOm inspelning slutar fungera: öppna guiden och kör \"Fixa efter uppdatering\"."
-                : "Version \(previousVersion) → \(currentVersion).\nmacOS kan kräva att skärminspelningsbehörigheten återställs efter uppdatering."
-            alert.addButton(withTitle: "Öppna uppdateringsguide")
-            alert.addButton(withTitle: "Senare")
-        } else {
-            alert.messageText = "Memento updated to \(shortVersion)"
-            alert.informativeText = hasPermission
-                ? "Version \(previousVersion) → \(currentVersion).\nIf capture stops working, open the guide and run \"Fix after update\"."
-                : "Version \(previousVersion) → \(currentVersion).\nmacOS may require re-authorizing Screen Recording after updates."
-            alert.addButton(withTitle: "Open update guide")
-            alert.addButton(withTitle: "Later")
-        }
-
-        if alert.runModal() == .alertFirstButtonReturn || !hasPermission {
-            PermissionGuideController.shared.show()
+        if isUpdate, let previousVersion {
+            PermissionGuideController.shared.show(
+                reason: .updated(previous: previousVersion, current: currentVersion)
+            )
         }
     }
 }

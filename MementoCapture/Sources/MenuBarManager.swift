@@ -596,7 +596,7 @@ class MenuBarManager {
     }
     
     @objc private func checkPermission() {
-        PermissionGuideController.shared.show()
+        PermissionGuideController.shared.show(reason: .manual)
         refreshPermissionState(forceIconUpdate: true)
     }
     

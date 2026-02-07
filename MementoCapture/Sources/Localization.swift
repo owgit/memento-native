@@ -13,7 +13,7 @@ enum L {
     static var pauseRecording: String { isSwedish ? "Pausa inspelning" : "Pause Recording" }
     static var resumeRecording: String { isSwedish ? "Fortsätt inspelning" : "Resume Recording" }
     static var openTimeline: String { isSwedish ? "Öppna Timeline" : "Open Timeline" }
-    static var permissions: String { isSwedish ? "Behörigheter..." : "Permissions..." }
+    static var permissions: String { isSwedish ? "Setup Hub..." : "Setup Hub..." }
     static var permissionMissingStatus: String { isSwedish ? "⚠ Behörighet för skärminspelning saknas" : "⚠ Screen Recording permission missing" }
     static var statistics: String { isSwedish ? "Statistik..." : "Statistics..." }
     static var cleanOldFrames: String { isSwedish ? "Rensa gamla frames..." : "Clean Old Frames..." }
