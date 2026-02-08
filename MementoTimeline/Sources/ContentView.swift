@@ -365,20 +365,6 @@ struct ContentView: View {
                         }
                         .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.isCommandPaletteOpen))
                         .help(L.commandPaletteHelp)
-
-                        // Search
-                        Button(action: { 
-                            // Ensure window is key and active
-                            NSApplication.shared.activate(ignoringOtherApps: true)
-                            NSApplication.shared.keyWindow?.makeKey()
-                            openSearchOverlay()
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 13))
-                        }
-                        .buttonStyle(ControlButtonStyle(size: 30))
-                        .keyboardShortcut("f", modifiers: .command)
-                        .help(L.searchHelp)
                         
                         // Text panel
                         Button(action: { 

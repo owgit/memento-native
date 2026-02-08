@@ -20,8 +20,8 @@ enum L {
     static var previousFrameHelp: String { isSwedish ? "Föregående (←)" : "Previous (←)" }
     static var nextFrameHelp: String { isSwedish ? "Nästa (→)" : "Next (→)" }
     static var lastFrameHelp: String { isSwedish ? "Sista (End)" : "Last (End)" }
-    static var searchHelp: String { isSwedish ? "Sök (⌘F)" : "Search (⌘F)" }
-    static var commandPaletteHelp: String { isSwedish ? "Kommandopalett (⌘K)" : "Command palette (⌘K)" }
+    static var searchHelp: String { isSwedish ? "Sök (⌘K)" : "Search (⌘K)" }
+    static var commandPaletteHelp: String { isSwedish ? "Kommandopalett (⌘F)" : "Command palette (⌘F)" }
     static var showTextHelp: String { isSwedish ? "Visa OCR-text (⌘T)" : "Show OCR text (⌘T)" }
     static var copyTextHelp: String { isSwedish ? "Kopiera all text" : "Copy all text" }
     
@@ -66,7 +66,7 @@ enum L {
     static var typeToSearch: String { isSwedish ? "Skriv för att söka" : "Type to search" }
     static var loadingSearchHistory: String { isSwedish ? "Laddar hela historiken..." : "Loading full history..." }
     static var commandPalettePlaceholder: String { isSwedish ? "Skriv kommando eller tid (14:30)..." : "Type command or time (14:30)..." }
-    static var commandPaletteHint: String { isSwedish ? "⌘K öppna · Esc stäng" : "⌘K open · Esc close" }
+    static var commandPaletteHint: String { isSwedish ? "⌘F öppna · Esc stäng" : "⌘F open · Esc close" }
     static var commandRecentMatches: String { isSwedish ? "Senaste träffar" : "Recent matches" }
     static var commandNoActions: String { isSwedish ? "Inga kommandon för denna sökning" : "No commands for this query" }
     static var commandOpenSearch: String { isSwedish ? "Öppna sökpanelen" : "Open search panel" }

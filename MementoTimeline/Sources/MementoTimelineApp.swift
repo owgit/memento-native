@@ -19,13 +19,13 @@ struct MementoTimelineApp: App {
                     timelineManager.isSearching = false
                     timelineManager.isCommandPaletteOpen = true
                 }
-                .keyboardShortcut("k", modifiers: .command)
+                .keyboardShortcut("f", modifiers: .command)
 
                 Button(L.menuSearch) {
                     timelineManager.isCommandPaletteOpen = false
                     timelineManager.isSearching = true
                 }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut("k", modifiers: .command)
                 
                 Button(L.menuFullscreen) {
                     toggleFullscreen()
