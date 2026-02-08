@@ -70,12 +70,7 @@ class MenuBarManager {
         controlCenterItem.view = controlCenterView
         menu.addItem(controlCenterItem)
         self.controlCenterView = controlCenterView
-        
-        // Status
-        let statusMenuItem = NSMenuItem(title: L.recording, action: nil, keyEquivalent: "")
-        statusMenuItem.tag = 100
-        menu.addItem(statusMenuItem)
-        
+
         menu.addItem(NSMenuItem.separator())
         
         // Toggle capture
@@ -169,7 +164,6 @@ class MenuBarManager {
         
         // Update menu items
         if let menu = statusItem?.menu {
-            menu.item(withTag: 100)?.title = hasScreenPermission ? (isCapturing ? L.recording : L.paused) : L.permissionMissingStatus
             menu.item(withTag: 101)?.title = isCapturing ? L.pauseRecording : L.resumeRecording
         }
         updateControlCenter()
@@ -316,23 +310,23 @@ class MenuBarManager {
 
     private func lastCaptureChipText() -> String {
         guard let date = captureService?.lastSuccessfulCaptureAt else {
-            return L.chipLastCaptureNever
+            return L.chipLastCaptureNoneShort
         }
 
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         if seconds < 60 {
-            return L.chipLastCaptureNow
+            return L.chipLastCaptureNowShort
         }
         let minutes = seconds / 60
         if minutes < 60 {
-            return L.chipLastCaptureMinutes(minutes)
+            return L.chipLastCaptureMinutesShort(minutes)
         }
         let hours = minutes / 60
         if hours < 24 {
-            return L.chipLastCaptureHours(hours)
+            return L.chipLastCaptureHoursShort(hours)
         }
         let days = hours / 24
-        return L.chipLastCaptureDays(days)
+        return L.chipLastCaptureDaysShort(days)
     }
 
     private func checkForUpdates(silent: Bool) {
@@ -730,14 +724,17 @@ private final class ControlCenterMenuView: NSView {
     var onPermissionTap: (() -> Void)?
     var onLastCaptureTap: (() -> Void)?
 
-    private let titleLabel = NSTextField(labelWithString: L.controlCenterTitle)
-    private let recordingChip = NSButton(title: L.chipRecording, target: nil, action: nil)
-    private let pausedChip = NSButton(title: L.chipPaused, target: nil, action: nil)
-    private let permissionChip = NSButton(title: L.chipPermissionMissing, target: nil, action: nil)
-    private let lastCaptureChip = NSButton(title: L.chipLastCaptureNever, target: nil, action: nil)
+    private let modeControl = NSSegmentedControl(
+        labels: [L.chipRecordingTiny, L.chipPausedTiny],
+        trackingMode: .selectOne,
+        target: nil,
+        action: nil
+    )
+    private let permissionChip = NSButton(title: L.chipPermissionMissingShort, target: nil, action: nil)
+    private let lastCaptureChip = NSButton(title: L.chipLastCaptureNoneShort, target: nil, action: nil)
 
     override init(frame frameRect: NSRect) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 96))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 44))
         setupView()
     }
 
@@ -747,59 +744,66 @@ private final class ControlCenterMenuView: NSView {
     }
 
     func render(state: ControlCenterState) {
-        styleChip(recordingChip, active: state.isRecording && state.hasPermission, tint: .systemRed)
-        styleChip(pausedChip, active: !state.isRecording && state.hasPermission, tint: .systemGray)
-        styleChip(permissionChip, active: !state.hasPermission, tint: .systemOrange)
-        styleChip(lastCaptureChip, active: state.lastCapture != nil, tint: .systemBlue)
+        modeControl.isEnabled = state.hasPermission
+        modeControl.selectedSegment = state.hasPermission ? (state.isRecording ? 0 : 1) : -1
+        modeControl.alphaValue = state.hasPermission ? 1.0 : 0.65
 
-        permissionChip.title = state.hasPermission ? L.chipPermissionOK : L.chipPermissionMissing
+        permissionChip.title = state.hasPermission ? L.chipPermissionOkTiny : L.chipPermissionMissingShort
         lastCaptureChip.title = state.lastCaptureText
+
+        permissionChip.image = icon(named: state.hasPermission ? "checkmark.shield" : "exclamationmark.shield")
+        styleStatusChip(permissionChip, active: !state.hasPermission, tint: .systemOrange)
+
+        lastCaptureChip.image = icon(named: "clock")
+        styleStatusChip(lastCaptureChip, active: state.lastCapture != nil, tint: .systemBlue)
     }
 
     private func setupView() {
-        wantsLayer = true
+        modeControl.segmentStyle = .rounded
+        modeControl.controlSize = .small
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeControl.font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+        modeControl.setWidth(52, forSegment: 0)
+        modeControl.setWidth(52, forSegment: 1)
+        modeControl.target = self
+        modeControl.action = #selector(handleModeChanged)
+        modeControl.toolTip = L.chipRecording + " / " + L.chipPaused
+        modeControl.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        modeControl.widthAnchor.constraint(equalToConstant: 108).isActive = true
 
-        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = .secondaryLabelColor
-
-        let chips = [recordingChip, pausedChip, permissionChip, lastCaptureChip]
+        let chips = [permissionChip, lastCaptureChip]
         chips.forEach { chip in
             chip.setButtonType(.momentaryPushIn)
-            chip.bezelStyle = .regularSquare
+            chip.bezelStyle = .inline
             chip.isBordered = false
-            chip.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+            chip.font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
             chip.focusRingType = .none
             chip.wantsLayer = true
-            chip.layer?.cornerRadius = 10
+            chip.layer?.cornerRadius = 7
             chip.layer?.masksToBounds = true
-            chip.contentTintColor = .labelColor
+            chip.imagePosition = .imageLeading
+            chip.imageHugsTitle = true
+            chip.contentTintColor = .secondaryLabelColor
             chip.translatesAutoresizingMaskIntoConstraints = false
-            chip.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            chip.heightAnchor.constraint(equalToConstant: 24).isActive = true
+            chip.cell?.lineBreakMode = .byTruncatingTail
+            chip.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
 
-        recordingChip.target = self
-        recordingChip.action = #selector(handleRecordingTap)
-        pausedChip.target = self
-        pausedChip.action = #selector(handlePausedTap)
+        permissionChip.widthAnchor.constraint(equalToConstant: 88).isActive = true
+        lastCaptureChip.widthAnchor.constraint(equalToConstant: 74).isActive = true
+
         permissionChip.target = self
         permissionChip.action = #selector(handlePermissionTap)
         lastCaptureChip.target = self
         lastCaptureChip.action = #selector(handleLastCaptureTap)
 
-        let rowOne = NSStackView(views: [recordingChip, pausedChip])
-        rowOne.orientation = .horizontal
-        rowOne.spacing = 8
-        rowOne.distribution = .fillEqually
-
-        let rowTwo = NSStackView(views: [permissionChip, lastCaptureChip])
-        rowTwo.orientation = .horizontal
-        rowTwo.spacing = 8
-        rowTwo.distribution = .fillEqually
-
-        let mainStack = NSStackView(views: [titleLabel, rowOne, rowTwo])
-        mainStack.orientation = .vertical
-        mainStack.spacing = 8
-        mainStack.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        let mainStack = NSStackView(views: [modeControl, permissionChip, lastCaptureChip])
+        mainStack.orientation = .horizontal
+        mainStack.alignment = .centerY
+        mainStack.spacing = 6
+        mainStack.distribution = .fill
+        mainStack.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         mainStack.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(mainStack)
@@ -815,23 +819,33 @@ private final class ControlCenterMenuView: NSView {
                 isRecording: false,
                 hasPermission: false,
                 lastCapture: nil,
-                lastCaptureText: L.chipLastCaptureNever
+                lastCaptureText: L.chipLastCaptureNoneShort
             )
         )
     }
 
-    private func styleChip(_ chip: NSButton, active: Bool, tint: NSColor) {
-        let base = active ? tint.withAlphaComponent(0.30) : NSColor.controlBackgroundColor.withAlphaComponent(0.7)
-        chip.layer?.backgroundColor = base.cgColor
+    private func styleStatusChip(_ chip: NSButton, active: Bool, tint: NSColor) {
+        chip.layer?.backgroundColor = (active ? tint.withAlphaComponent(0.15) : NSColor.clear).cgColor
+        chip.layer?.borderWidth = 1
+        chip.layer?.borderColor = (active ? tint.withAlphaComponent(0.45) : NSColor.separatorColor.withAlphaComponent(0.45)).cgColor
         chip.contentTintColor = active ? .labelColor : .secondaryLabelColor
     }
 
-    @objc private func handleRecordingTap() {
-        onRecordingTap?()
+    private func icon(named symbolName: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        image?.isTemplate = true
+        return image
     }
 
-    @objc private func handlePausedTap() {
-        onPausedTap?()
+    @objc private func handleModeChanged() {
+        switch modeControl.selectedSegment {
+        case 0:
+            onRecordingTap?()
+        case 1:
+            onPausedTap?()
+        default:
+            break
+        }
     }
 
     @objc private func handlePermissionTap() {

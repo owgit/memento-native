@@ -61,11 +61,23 @@ private enum SearchPanelState {
     case results
 }
 
+private struct CommandPaletteEntry: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let icon: String
+    let tint: Color
+    let action: () -> Void
+}
+
 private enum TimelineVisualTokens {
     static let searchPanelWidth: CGFloat = 640
     static let searchPanelCornerRadius: CGFloat = 20
     static let searchRowCornerRadius: CGFloat = 8
     static let searchPreviewCornerRadius: CGFloat = 12
+    static let commandPanelWidth: CGFloat = 620
+    static let commandPanelCornerRadius: CGFloat = 18
+    static let commandRowCornerRadius: CGFloat = 10
 }
 
 struct ContentView: View {
@@ -82,6 +94,8 @@ struct ContentView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var selectedSearchResultIndex: Int = 0
     @State private var openingSearchResultFrameId: Int?
+    @State private var commandPaletteQuery: String = ""
+    @State private var selectedCommandIndex: Int = 0
     
     var body: some View {
         ZStack {
@@ -131,6 +145,12 @@ struct ContentView: View {
                 searchOverlay
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
+
+            // Command palette overlay
+            if manager.isCommandPaletteOpen {
+                commandPaletteOverlay
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
             
             // Text overlay panel
             if manager.showTextOverlay {
@@ -166,10 +186,10 @@ struct ContentView: View {
             }
         }
         .background(Color.black)
-        .focusable(!manager.isSearching)  // Only focusable when not searching
+        .focusable(!manager.isSearching && !manager.isCommandPaletteOpen)
         .focusEffectDisabled()
         .onKeyPress(.leftArrow) {
-            if !manager.isSearching {
+            if !manager.isSearching && !manager.isCommandPaletteOpen {
                 manager.previousFrame()
                 showControlsTemporarily()
                 return .handled
@@ -177,7 +197,7 @@ struct ContentView: View {
             return .ignored
         }
         .onKeyPress(.rightArrow) {
-            if !manager.isSearching {
+            if !manager.isSearching && !manager.isCommandPaletteOpen {
                 manager.nextFrame()
                 showControlsTemporarily()
                 return .handled
@@ -185,13 +205,17 @@ struct ContentView: View {
             return .ignored
         }
         .onKeyPress(.space) {
-            if !manager.isSearching {
+            if !manager.isSearching && !manager.isCommandPaletteOpen {
                 showControls.toggle()
                 return .handled
             }
             return .ignored
         }
         .onKeyPress(.escape) {
+            if manager.isCommandPaletteOpen {
+                closeCommandPalette()
+                return .handled
+            }
             if manager.isSearching {
                 closeSearchOverlay()
                 return .handled
@@ -203,6 +227,13 @@ struct ContentView: View {
                 selectedSearchResultIndex = 0
             } else {
                 selectedSearchResultIndex = min(selectedSearchResultIndex, newCount - 1)
+            }
+        }
+        .onChange(of: manager.isCommandPaletteOpen) { _, isOpen in
+            if isOpen {
+                commandPaletteQuery = ""
+                selectedCommandIndex = 0
+                manager.isSearching = false
             }
         }
         .onAppear { 
@@ -323,6 +354,18 @@ struct ContentView: View {
                     
                     // Action buttons group
                     HStack(spacing: 8) {
+                        // Command palette
+                        Button(action: {
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                            NSApplication.shared.keyWindow?.makeKey()
+                            openCommandPalette()
+                        }) {
+                            Image(systemName: "command")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.isCommandPaletteOpen))
+                        .help(L.commandPaletteHelp)
+
                         // Search
                         Button(action: { 
                             // Ensure window is key and active
@@ -836,6 +879,116 @@ struct ContentView: View {
             )
         }
     }
+
+    // MARK: - Command Palette
+    private var commandPaletteOverlay: some View {
+        let entries = commandPaletteEntries
+
+        return ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    closeCommandPalette()
+                }
+
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Image(systemName: "command")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.75))
+
+                    SearchTextField(
+                        text: $commandPaletteQuery,
+                        placeholder: L.commandPalettePlaceholder,
+                        onSubmit: { runSelectedCommand() },
+                        onMoveUp: { moveCommandSelection(-1) },
+                        onMoveDown: { moveCommandSelection(1) }
+                    )
+                    .frame(height: 28)
+                    .accessibilityLabel(L.commandPalettePlaceholder)
+                    .onChange(of: commandPaletteQuery) { _, _ in
+                        selectedCommandIndex = 0
+                    }
+
+                    Text(L.commandPaletteHint)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+
+                    Button(action: { closeCommandPalette() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                if commandPaletteQuery.isEmpty, !manager.recentSearchSelections.isEmpty {
+                    HStack {
+                        Text(L.commandRecentMatches)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 2)
+                }
+
+                if entries.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 30))
+                            .foregroundColor(.white.opacity(0.2))
+                        Text(L.commandNoActions)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    .frame(height: 180)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 6) {
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                CommandPaletteRow(
+                                    title: entry.title,
+                                    subtitle: entry.subtitle,
+                                    icon: entry.icon,
+                                    tint: entry.tint,
+                                    isSelected: index == selectedCommandIndex
+                                )
+                                .onHover { hovering in
+                                    if hovering {
+                                        selectedCommandIndex = index
+                                    }
+                                }
+                                .onTapGesture {
+                                    selectedCommandIndex = index
+                                    entry.action()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
+                    }
+                    .frame(maxHeight: 300)
+                }
+            }
+            .frame(width: TimelineVisualTokens.commandPanelWidth)
+            .background(
+                RoundedRectangle(cornerRadius: TimelineVisualTokens.commandPanelCornerRadius)
+                    .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.98)))
+                    .shadow(color: .black.opacity(0.5), radius: 35, y: 14)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TimelineVisualTokens.commandPanelCornerRadius)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+        }
+    }
     
     // MARK: - Loading View
     private var loadingView: some View {
@@ -961,6 +1114,7 @@ struct ContentView: View {
         openingSearchResultFrameId = nil
         selectedSearchResultIndex = 0
         manager.searchErrorMessage = nil
+        manager.isCommandPaletteOpen = false
         withAnimation { manager.isSearching = true }
     }
 
@@ -970,6 +1124,168 @@ struct ContentView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             manager.isSearching = false
         }
+    }
+
+    private func openCommandPalette() {
+        manager.isSearching = false
+        manager.searchErrorMessage = nil
+        commandPaletteQuery = ""
+        selectedCommandIndex = 0
+        withAnimation(.easeOut(duration: 0.15)) {
+            manager.isCommandPaletteOpen = true
+        }
+    }
+
+    private func closeCommandPalette() {
+        withAnimation(.easeOut(duration: 0.15)) {
+            manager.isCommandPaletteOpen = false
+        }
+    }
+
+    private var commandPaletteEntries: [CommandPaletteEntry] {
+        let query = commandPaletteQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        var entries: [CommandPaletteEntry] = []
+
+        if !query.isEmpty {
+            entries.append(
+                CommandPaletteEntry(
+                    id: "search:\(query)",
+                    title: L.searchFor(query),
+                    subtitle: manager.useSemanticSearch ? L.semantic : L.text,
+                    icon: manager.useSemanticSearch ? "brain" : "magnifyingglass",
+                    tint: .blue
+                ) {
+                    runSearchFromPalette(query: query)
+                }
+            )
+
+            if let parsed = parseTimeQuery(query) {
+                entries.append(
+                    CommandPaletteEntry(
+                        id: "time:\(parsed.display)",
+                        title: L.jumpToTime(parsed.display),
+                        subtitle: L.commandJumpToTimeSubtitle,
+                        icon: "clock.arrow.circlepath",
+                        tint: .mint
+                    ) {
+                        let opened = manager.jumpToClosestTime(hour: parsed.hour, minute: parsed.minute)
+                        if opened {
+                            closeCommandPalette()
+                        }
+                    }
+                )
+            }
+        }
+
+        let baseEntries: [CommandPaletteEntry] = [
+            CommandPaletteEntry(
+                id: "open-search",
+                title: L.commandOpenSearch,
+                subtitle: L.commandOpenSearchSubtitle,
+                icon: "magnifyingglass",
+                tint: .blue
+            ) {
+                openSearchOverlay()
+            },
+            CommandPaletteEntry(
+                id: "toggle-text",
+                title: manager.showTextOverlay ? L.commandHideTextPanel : L.commandShowTextPanel,
+                subtitle: L.commandTextPanelSubtitle,
+                icon: manager.showTextOverlay ? "text.bubble.fill" : "text.bubble",
+                tint: .purple
+            ) {
+                withAnimation(.spring(response: 0.3)) {
+                    manager.showTextOverlay.toggle()
+                    if manager.showTextOverlay {
+                        manager.loadTextForCurrentFrame()
+                    }
+                }
+                closeCommandPalette()
+            },
+            CommandPaletteEntry(
+                id: "toggle-mode",
+                title: manager.useSemanticSearch ? L.commandUseTextSearch : L.commandUseSemantic,
+                subtitle: L.commandSearchModeSubtitle,
+                icon: manager.useSemanticSearch ? "text.magnifyingglass" : "brain",
+                tint: .orange
+            ) {
+                setSearchMode(semantic: !manager.useSemanticSearch)
+                closeCommandPalette()
+            }
+        ]
+
+        let recent = manager.recentSearchSelections.prefix(5).map { selection in
+            CommandPaletteEntry(
+                id: "recent:\(selection.frameId)",
+                title: selection.text,
+                subtitle: selection.appName.isEmpty
+                    ? "\(selection.matchType.label) · \(formatTimeDisplay(selection.timestamp))"
+                    : "\(selection.matchType.label) · \(selection.appName) · \(formatTimeDisplay(selection.timestamp))",
+                icon: "clock",
+                tint: .green
+            ) {
+                manager.jumpToFrameId(selection.frameId) { success in
+                    if success {
+                        closeCommandPalette()
+                    }
+                }
+            }
+        }
+
+        let filterableEntries = baseEntries + recent
+        if query.isEmpty {
+            entries.append(contentsOf: filterableEntries)
+        } else {
+            let filtered = filterableEntries.filter { entry in
+                entry.title.localizedCaseInsensitiveContains(query) ||
+                entry.subtitle.localizedCaseInsensitiveContains(query)
+            }
+            entries.append(contentsOf: filtered)
+        }
+
+        return entries
+    }
+
+    private func moveCommandSelection(_ delta: Int) {
+        let entries = commandPaletteEntries
+        guard !entries.isEmpty else { return }
+        let next = selectedCommandIndex + delta
+        selectedCommandIndex = min(max(0, next), entries.count - 1)
+    }
+
+    private func runSelectedCommand() {
+        let entries = commandPaletteEntries
+        guard !entries.isEmpty else { return }
+        let index = min(max(0, selectedCommandIndex), entries.count - 1)
+        entries[index].action()
+    }
+
+    private func runSearchFromPalette(query: String) {
+        openSearchOverlay()
+        manager.searchQuery = query
+        if query.count >= 2 {
+            if manager.useSemanticSearch {
+                manager.semanticSearch(query)
+            } else {
+                manager.search(query)
+            }
+        }
+    }
+
+    private func parseTimeQuery(_ query: String) -> (display: String, hour: Int, minute: Int)? {
+        let cleaned = query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ".", with: ":")
+        let parts = cleaned.split(separator: ":")
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...23).contains(hour),
+              (0...59).contains(minute) else {
+            return nil
+        }
+        let display = String(format: "%02d:%02d", hour, minute)
+        return (display, hour, minute)
     }
 
     private func moveSearchSelection(_ delta: Int) {
@@ -1087,6 +1403,7 @@ struct ContentView: View {
         manager.jumpToFrameId(result.frameId) { success in
             openingSearchResultFrameId = nil
             if success {
+                manager.rememberRecentSearch(result)
                 closeSearchOverlay()
             } else {
                 manager.searchErrorMessage = L.searchOpenError
@@ -1187,6 +1504,51 @@ struct ControlButtonView: View {
                         configuration.trigger()
                     }
             )
+    }
+}
+
+// MARK: - Command Palette Row
+struct CommandPaletteRow: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let tint: Color
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 20, height: 20)
+                .background(tint.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.92))
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: TimelineVisualTokens.commandRowCornerRadius)
+                .fill(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: TimelineVisualTokens.commandRowCornerRadius)
+                .stroke(isSelected ? Color.white.opacity(0.28) : Color.clear, lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -15,7 +15,14 @@ struct MementoTimelineApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu(L.timelineMenu) {
+                Button(L.menuCommandPalette) {
+                    timelineManager.isSearching = false
+                    timelineManager.isCommandPaletteOpen = true
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
                 Button(L.menuSearch) {
+                    timelineManager.isCommandPaletteOpen = false
                     timelineManager.isSearching = true
                 }
                 .keyboardShortcut("f", modifiers: .command)

@@ -23,10 +23,22 @@ enum L {
     static var controlCenterTitle: String { isSwedish ? "Control Center" : "Control Center" }
     static var chipRecording: String { isSwedish ? "Spelar in" : "Recording" }
     static var chipPaused: String { isSwedish ? "Pausad" : "Paused" }
+    static var chipRecordingShort: String { isSwedish ? "Inspelning" : "Recording" }
+    static var chipPausedShort: String { isSwedish ? "Paus" : "Paused" }
+    static var chipRecordingTiny: String { isSwedish ? "Rec" : "Rec" }
+    static var chipPausedTiny: String { isSwedish ? "Paus" : "Pause" }
+    static var chipPermissionShort: String { isSwedish ? "Behörighet" : "Permission" }
+    static var chipPermissionMissingShort: String { isSwedish ? "Saknas" : "Missing" }
+    static var chipPermissionOkTiny: String { "OK" }
     static var chipPermissionMissing: String { isSwedish ? "Behörighet saknas" : "Permission missing" }
     static var chipPermissionOK: String { isSwedish ? "Behörighet OK" : "Permission OK" }
     static var chipLastCaptureNever: String { isSwedish ? "Senaste: ingen" : "Last: none" }
     static var chipLastCaptureNow: String { isSwedish ? "Senaste: nu" : "Last: now" }
+    static var chipLastCaptureNoneShort: String { isSwedish ? "Ingen" : "None" }
+    static var chipLastCaptureNowShort: String { isSwedish ? "Nu" : "Now" }
+    static func chipLastCaptureMinutesShort(_ minutes: Int) -> String { "\(minutes)m" }
+    static func chipLastCaptureHoursShort(_ hours: Int) -> String { "\(hours)h" }
+    static func chipLastCaptureDaysShort(_ days: Int) -> String { "\(days)d" }
     static func chipLastCaptureMinutes(_ minutes: Int) -> String {
         isSwedish ? "Senaste: \(minutes)m" : "Last: \(minutes)m"
     }

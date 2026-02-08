@@ -8,6 +8,7 @@ class TimelineManager: ObservableObject {
     @Published var currentFrameIndex: Int = 0
     @Published var totalFrames: Int = 0
     @Published var isSearching: Bool = false
+    @Published var isCommandPaletteOpen: Bool = false
     @Published var searchQuery: String = ""
     @Published var searchResults: [SearchResult] = []
     @Published var isLoading: Bool = false
@@ -22,6 +23,7 @@ class TimelineManager: ObservableObject {
     @Published var isPreparingSearchHistory: Bool = false
     @Published var isSearchRunning: Bool = false
     @Published var searchErrorMessage: String?
+    @Published var recentSearchSelections: [RecentSearchSelection] = []
     
     struct TextBlock: Identifiable {
         let id = UUID()
@@ -53,6 +55,15 @@ class TimelineManager: ObservableObject {
         enum MatchType {
             case ocr, url, title, clipboard
         }
+    }
+
+    struct RecentSearchSelection: Identifiable {
+        let id = UUID()
+        let frameId: Int
+        let text: String
+        let timestamp: String
+        let appName: String
+        let matchType: SearchResult.MatchType
     }
     
     struct TimelineSegment: Identifiable {
@@ -589,6 +600,45 @@ class TimelineManager: ObservableObject {
             loadMoreHistory()
         }
     }
+
+    func jumpToClosestTime(hour: Int, minute: Int) -> Bool {
+        guard !timelineSegments.isEmpty else { return false }
+
+        let targetMinutes = (hour * 60) + minute
+        var bestSegment: TimelineSegment?
+        var bestDistance = Int.max
+
+        for segment in timelineSegments {
+            guard let segmentMinutes = minutesOfDay(for: segment) else { continue }
+            let distance = abs(segmentMinutes - targetMinutes)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestSegment = segment
+            }
+        }
+
+        guard let bestSegment else { return false }
+        jumpToFrame(bestSegment.displayIndex)
+        return true
+    }
+
+    private func minutesOfDay(for segment: TimelineSegment) -> Int? {
+        if let date = segment.time {
+            let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+            guard let hour = components.hour, let minute = components.minute else { return nil }
+            return (hour * 60) + minute
+        }
+
+        let clean = segment.timeString.replacingOccurrences(of: "\"", with: "")
+        let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
+        guard parts.count >= 2 else { return nil }
+        let timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
+        let components = timePart.split(separator: ":")
+        guard components.count >= 2,
+              let hour = Int(components[0]),
+              let minute = Int(components[1]) else { return nil }
+        return (hour * 60) + minute
+    }
     
     func loadTextForCurrentFrame() {
         let frameId = getFrameIdForIndex(currentFrameIndex)
@@ -655,6 +705,25 @@ class TimelineManager: ObservableObject {
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.copiedNotification = false
+        }
+    }
+
+    func rememberRecentSearch(_ result: SearchResult) {
+        let cleanedText = String(result.text.prefix(140))
+        recentSearchSelections.removeAll { $0.frameId == result.frameId }
+        recentSearchSelections.insert(
+            RecentSearchSelection(
+                frameId: result.frameId,
+                text: cleanedText,
+                timestamp: result.timestamp,
+                appName: result.appName,
+                matchType: result.matchType
+            ),
+            at: 0
+        )
+
+        if recentSearchSelections.count > 8 {
+            recentSearchSelections = Array(recentSearchSelections.prefix(8))
         }
     }
     

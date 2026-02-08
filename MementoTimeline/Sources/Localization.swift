@@ -21,6 +21,7 @@ enum L {
     static var nextFrameHelp: String { isSwedish ? "Nästa (→)" : "Next (→)" }
     static var lastFrameHelp: String { isSwedish ? "Sista (End)" : "Last (End)" }
     static var searchHelp: String { isSwedish ? "Sök (⌘F)" : "Search (⌘F)" }
+    static var commandPaletteHelp: String { isSwedish ? "Kommandopalett (⌘K)" : "Command palette (⌘K)" }
     static var showTextHelp: String { isSwedish ? "Visa OCR-text (⌘T)" : "Show OCR text (⌘T)" }
     static var copyTextHelp: String { isSwedish ? "Kopiera all text" : "Copy all text" }
     
@@ -56,8 +57,28 @@ enum L {
     static func noResults(_ query: String) -> String {
         isSwedish ? "Inga resultat för \"\(query)\"" : "No results for \"\(query)\""
     }
+    static func searchFor(_ query: String) -> String {
+        isSwedish ? "Sök efter \"\(query)\"" : "Search for \"\(query)\""
+    }
+    static func jumpToTime(_ value: String) -> String {
+        isSwedish ? "Hoppa till \(value)" : "Jump to \(value)"
+    }
     static var typeToSearch: String { isSwedish ? "Skriv för att söka" : "Type to search" }
     static var loadingSearchHistory: String { isSwedish ? "Laddar hela historiken..." : "Loading full history..." }
+    static var commandPalettePlaceholder: String { isSwedish ? "Skriv kommando eller tid (14:30)..." : "Type command or time (14:30)..." }
+    static var commandPaletteHint: String { isSwedish ? "⌘K öppna · Esc stäng" : "⌘K open · Esc close" }
+    static var commandRecentMatches: String { isSwedish ? "Senaste träffar" : "Recent matches" }
+    static var commandNoActions: String { isSwedish ? "Inga kommandon för denna sökning" : "No commands for this query" }
+    static var commandOpenSearch: String { isSwedish ? "Öppna sökpanelen" : "Open search panel" }
+    static var commandOpenSearchSubtitle: String { isSwedish ? "Fokusera sök och börja skriva" : "Focus search and start typing" }
+    static var commandShowTextPanel: String { isSwedish ? "Visa textpanel" : "Show text panel" }
+    static var commandHideTextPanel: String { isSwedish ? "Dölj textpanel" : "Hide text panel" }
+    static var commandTextPanelSubtitle: String { isSwedish ? "Visa OCR-text för aktuell frame" : "Show OCR text for current frame" }
+    static var commandUseSemantic: String { isSwedish ? "Använd semantisk sökning" : "Use semantic search" }
+    static var commandUseTextSearch: String { isSwedish ? "Använd textsökning" : "Use text search" }
+    static var commandSearchModeSubtitle: String { isSwedish ? "Byt standardsökning" : "Switch default search mode" }
+    static var commandJumpToTimeSubtitle: String { isSwedish ? "Hoppar till närmaste tid i historiken" : "Jumps to the closest time in loaded history" }
+    static var commandRecentMatchSubtitle: String { isSwedish ? "Öppna tidigare vald träff" : "Open a previously selected match" }
     
     // MARK: - Text Overlay
     static var textFromScreenshot: String { isSwedish ? "Text från skärmbild" : "Text from screenshot" }
@@ -67,6 +88,7 @@ enum L {
     // MARK: - App Menu
     static var timelineMenu: String { isSwedish ? "Tidslinje" : "Timeline" }
     static var menuSearch: String { isSwedish ? "Sök" : "Search" }
+    static var menuCommandPalette: String { isSwedish ? "Kommandopalett" : "Command Palette" }
     static var menuFullscreen: String { isSwedish ? "Fullskärm" : "Fullscreen" }
     static var menuPreviousFrame: String { isSwedish ? "Föregående frame" : "Previous frame" }
     static var menuNextFrame: String { isSwedish ? "Nästa frame" : "Next frame" }
