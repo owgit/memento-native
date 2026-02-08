@@ -20,6 +20,22 @@ enum L {
     static var saveDebugScreenshot: String { isSwedish ? "Spara debug-skärmdump" : "Save Debug Screenshot" }
     static var quitMemento: String { isSwedish ? "Avsluta Memento" : "Quit Memento" }
     static var settingsMenu: String { isSwedish ? "Inställningar..." : "Settings..." }
+    static var controlCenterTitle: String { isSwedish ? "Control Center" : "Control Center" }
+    static var chipRecording: String { isSwedish ? "Spelar in" : "Recording" }
+    static var chipPaused: String { isSwedish ? "Pausad" : "Paused" }
+    static var chipPermissionMissing: String { isSwedish ? "Behörighet saknas" : "Permission missing" }
+    static var chipPermissionOK: String { isSwedish ? "Behörighet OK" : "Permission OK" }
+    static var chipLastCaptureNever: String { isSwedish ? "Senaste: ingen" : "Last: none" }
+    static var chipLastCaptureNow: String { isSwedish ? "Senaste: nu" : "Last: now" }
+    static func chipLastCaptureMinutes(_ minutes: Int) -> String {
+        isSwedish ? "Senaste: \(minutes)m" : "Last: \(minutes)m"
+    }
+    static func chipLastCaptureHours(_ hours: Int) -> String {
+        isSwedish ? "Senaste: \(hours)h" : "Last: \(hours)h"
+    }
+    static func chipLastCaptureDays(_ days: Int) -> String {
+        isSwedish ? "Senaste: \(days)d" : "Last: \(days)d"
+    }
     static var checkForUpdates: String { isSwedish ? "Sök uppdatering..." : "Check for Updates..." }
     static var checkingForUpdates: String { isSwedish ? "Söker uppdatering..." : "Checking for updates..." }
     static func updateAvailableMenu(_ version: String) -> String {

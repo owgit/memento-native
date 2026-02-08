@@ -10,8 +10,10 @@ class MenuBarManager {
     private var isCapturing = true
     private var isCaptureServiceRunning = false
     private var captureService: CaptureService?
+    private var controlCenterView: ControlCenterMenuView?
     private var hasScreenPermission = ScreenshotCapture.hasPermission()
     private var permissionMonitorTimer: Timer?
+    private var statusRefreshTimer: Timer?
     private var updateTimer: Timer?
     private var isCheckingUpdates = false
     private var availableReleaseVersion: String?
@@ -19,6 +21,7 @@ class MenuBarManager {
 
     private let updateMenuTag = 103
     private let permissionCheckInterval: TimeInterval = 5
+    private let statusRefreshInterval: TimeInterval = 1
     private let updateCheckInterval: TimeInterval = 6 * 60 * 60
     private let updateAPIURL = URL(string: "https://api.github.com/repos/owgit/memento-native/releases/latest")!
     private let fallbackReleaseURL = URL(string: "https://github.com/owgit/memento-native/releases/latest")!
@@ -42,11 +45,31 @@ class MenuBarManager {
         refreshPermissionState(forceIconUpdate: true)
         syncCaptureServiceState()
         startPermissionMonitoring()
+        startStatusRefresh()
         startUpdateChecks()
     }
     
     private func setupMenu() {
         let menu = NSMenu()
+
+        // Control Center mini panel
+        let controlCenterItem = NSMenuItem()
+        let controlCenterView = ControlCenterMenuView()
+        controlCenterView.onRecordingTap = { [weak self] in
+            self?.setCaptureEnabledFromControlCenter(true)
+        }
+        controlCenterView.onPausedTap = { [weak self] in
+            self?.setCaptureEnabledFromControlCenter(false)
+        }
+        controlCenterView.onPermissionTap = { [weak self] in
+            self?.checkPermission()
+        }
+        controlCenterView.onLastCaptureTap = { [weak self] in
+            self?.openTimeline()
+        }
+        controlCenterItem.view = controlCenterView
+        menu.addItem(controlCenterItem)
+        self.controlCenterView = controlCenterView
         
         // Status
         let statusMenuItem = NSMenuItem(title: L.recording, action: nil, keyEquivalent: "")
@@ -126,6 +149,7 @@ class MenuBarManager {
         menu.addItem(versionItem)
         
         statusItem?.menu = menu
+        updateControlCenter()
     }
     
     private func updateIcon() {
@@ -148,6 +172,7 @@ class MenuBarManager {
             menu.item(withTag: 100)?.title = hasScreenPermission ? (isCapturing ? L.recording : L.paused) : L.permissionMissingStatus
             menu.item(withTag: 101)?.title = isCapturing ? L.pauseRecording : L.resumeRecording
         }
+        updateControlCenter()
     }
     
     @objc private func toggleCapture() {
@@ -230,6 +255,18 @@ class MenuBarManager {
         }
     }
 
+    private func startStatusRefresh() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: statusRefreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateControlCenter()
+            }
+        }
+        if let statusRefreshTimer {
+            RunLoop.main.add(statusRefreshTimer, forMode: .common)
+        }
+    }
+
     private func refreshPermissionState(forceIconUpdate: Bool = false) {
         let latestPermission = ScreenshotCapture.hasPermission()
         let changed = latestPermission != hasScreenPermission
@@ -254,6 +291,48 @@ class MenuBarManager {
             captureService?.stop()
         }
         isCaptureServiceRunning = shouldRun
+        updateControlCenter()
+    }
+
+    private func setCaptureEnabledFromControlCenter(_ enabled: Bool) {
+        isCapturing = enabled
+        syncCaptureServiceState()
+        updateIcon()
+        updateControlCenter()
+        statusItem?.menu?.cancelTracking()
+    }
+
+    private func updateControlCenter() {
+        guard let controlCenterView else { return }
+
+        let state = ControlCenterState(
+            isRecording: isCaptureServiceRunning,
+            hasPermission: hasScreenPermission,
+            lastCapture: captureService?.lastSuccessfulCaptureAt,
+            lastCaptureText: lastCaptureChipText()
+        )
+        controlCenterView.render(state: state)
+    }
+
+    private func lastCaptureChipText() -> String {
+        guard let date = captureService?.lastSuccessfulCaptureAt else {
+            return L.chipLastCaptureNever
+        }
+
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        if seconds < 60 {
+            return L.chipLastCaptureNow
+        }
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return L.chipLastCaptureMinutes(minutes)
+        }
+        let hours = minutes / 60
+        if hours < 24 {
+            return L.chipLastCaptureHours(hours)
+        }
+        let days = hours / 24
+        return L.chipLastCaptureDays(days)
     }
 
     private func checkForUpdates(silent: Bool) {
@@ -629,9 +708,137 @@ class MenuBarManager {
     @objc private func quitApp() {
         permissionMonitorTimer?.invalidate()
         permissionMonitorTimer = nil
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = nil
         updateTimer?.invalidate()
         updateTimer = nil
         setCaptureServiceRunning(false)
         NSApp.terminate(nil)
+    }
+}
+
+private struct ControlCenterState {
+    let isRecording: Bool
+    let hasPermission: Bool
+    let lastCapture: Date?
+    let lastCaptureText: String
+}
+
+private final class ControlCenterMenuView: NSView {
+    var onRecordingTap: (() -> Void)?
+    var onPausedTap: (() -> Void)?
+    var onPermissionTap: (() -> Void)?
+    var onLastCaptureTap: (() -> Void)?
+
+    private let titleLabel = NSTextField(labelWithString: L.controlCenterTitle)
+    private let recordingChip = NSButton(title: L.chipRecording, target: nil, action: nil)
+    private let pausedChip = NSButton(title: L.chipPaused, target: nil, action: nil)
+    private let permissionChip = NSButton(title: L.chipPermissionMissing, target: nil, action: nil)
+    private let lastCaptureChip = NSButton(title: L.chipLastCaptureNever, target: nil, action: nil)
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 96))
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+
+    func render(state: ControlCenterState) {
+        styleChip(recordingChip, active: state.isRecording && state.hasPermission, tint: .systemRed)
+        styleChip(pausedChip, active: !state.isRecording && state.hasPermission, tint: .systemGray)
+        styleChip(permissionChip, active: !state.hasPermission, tint: .systemOrange)
+        styleChip(lastCaptureChip, active: state.lastCapture != nil, tint: .systemBlue)
+
+        permissionChip.title = state.hasPermission ? L.chipPermissionOK : L.chipPermissionMissing
+        lastCaptureChip.title = state.lastCaptureText
+    }
+
+    private func setupView() {
+        wantsLayer = true
+
+        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.textColor = .secondaryLabelColor
+
+        let chips = [recordingChip, pausedChip, permissionChip, lastCaptureChip]
+        chips.forEach { chip in
+            chip.setButtonType(.momentaryPushIn)
+            chip.bezelStyle = .regularSquare
+            chip.isBordered = false
+            chip.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+            chip.focusRingType = .none
+            chip.wantsLayer = true
+            chip.layer?.cornerRadius = 10
+            chip.layer?.masksToBounds = true
+            chip.contentTintColor = .labelColor
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            chip.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        }
+
+        recordingChip.target = self
+        recordingChip.action = #selector(handleRecordingTap)
+        pausedChip.target = self
+        pausedChip.action = #selector(handlePausedTap)
+        permissionChip.target = self
+        permissionChip.action = #selector(handlePermissionTap)
+        lastCaptureChip.target = self
+        lastCaptureChip.action = #selector(handleLastCaptureTap)
+
+        let rowOne = NSStackView(views: [recordingChip, pausedChip])
+        rowOne.orientation = .horizontal
+        rowOne.spacing = 8
+        rowOne.distribution = .fillEqually
+
+        let rowTwo = NSStackView(views: [permissionChip, lastCaptureChip])
+        rowTwo.orientation = .horizontal
+        rowTwo.spacing = 8
+        rowTwo.distribution = .fillEqually
+
+        let mainStack = NSStackView(views: [titleLabel, rowOne, rowTwo])
+        mainStack.orientation = .vertical
+        mainStack.spacing = 8
+        mainStack.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(mainStack)
+        NSLayoutConstraint.activate([
+            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            mainStack.topAnchor.constraint(equalTo: topAnchor),
+            mainStack.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        render(
+            state: ControlCenterState(
+                isRecording: false,
+                hasPermission: false,
+                lastCapture: nil,
+                lastCaptureText: L.chipLastCaptureNever
+            )
+        )
+    }
+
+    private func styleChip(_ chip: NSButton, active: Bool, tint: NSColor) {
+        let base = active ? tint.withAlphaComponent(0.30) : NSColor.controlBackgroundColor.withAlphaComponent(0.7)
+        chip.layer?.backgroundColor = base.cgColor
+        chip.contentTintColor = active ? .labelColor : .secondaryLabelColor
+    }
+
+    @objc private func handleRecordingTap() {
+        onRecordingTap?()
+    }
+
+    @objc private func handlePausedTap() {
+        onPausedTap?()
+    }
+
+    @objc private func handlePermissionTap() {
+        onPermissionTap?()
+    }
+
+    @objc private func handleLastCaptureTap() {
+        onLastCaptureTap?()
     }
 }

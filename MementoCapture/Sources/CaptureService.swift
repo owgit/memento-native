@@ -21,6 +21,7 @@ class CaptureService {
     private var highMotionMediaStreak = 0
     private var videoPauseUntil: Date?
     private var pausedVideoBundleId: String?
+    private(set) var lastSuccessfulCaptureAt: Date?
     
     // Components
     private let screenshotCapture = ScreenshotCapture()
@@ -240,6 +241,7 @@ class CaptureService {
         // Log
         let elapsed = Date().timeIntervalSince(startTime)
         print("📸 Frame \(frameCount): \(ocrResults.count) texts, \(String(format: "%.2f", elapsed))s, app: \(activeApp)")
+        lastSuccessfulCaptureAt = Date()
         
         frameCount += 1
         
