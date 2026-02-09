@@ -16,8 +16,10 @@ class MenuBarManager {
     private var statusRefreshTimer: Timer?
     private var updateTimer: Timer?
     private var isCheckingUpdates = false
+    private var isInstallingUpdate = false
     private var availableReleaseVersion: String?
     private var availableReleaseURL: URL?
+    private var availableReleaseDownloadURL: URL?
 
     private let updateMenuTag = 103
     private let permissionCheckInterval: TimeInterval = 5
@@ -198,24 +200,45 @@ class MenuBarManager {
     // MARK: - Updates
 
     private struct GitHubRelease: Decodable {
+        struct Asset: Decodable {
+            let name: String
+            let browserDownloadURL: String
+
+            enum CodingKeys: String, CodingKey {
+                case name
+                case browserDownloadURL = "browser_download_url"
+            }
+        }
+
         let tagName: String
         let htmlURL: String
         let draft: Bool
         let prerelease: Bool
+        let assets: [Asset]
 
         enum CodingKeys: String, CodingKey {
             case tagName = "tag_name"
             case htmlURL = "html_url"
             case draft
             case prerelease
+            case assets
         }
     }
 
     @objc private func handleUpdateMenuAction() {
+        if isInstallingUpdate {
+            return
+        }
+
         if let version = availableReleaseVersion,
            isRemoteVersionNewer(version, than: currentVersionString()),
            let releaseURL = availableReleaseURL {
-            NSWorkspace.shared.open(releaseURL)
+            showUpdateAvailableAlert(
+                localVersion: currentVersionString(),
+                remoteVersion: version,
+                releaseURL: releaseURL,
+                downloadURL: availableReleaseDownloadURL
+            )
             return
         }
 
@@ -365,6 +388,7 @@ class MenuBarManager {
         guard !release.draft, !release.prerelease else {
             availableReleaseVersion = nil
             availableReleaseURL = nil
+            availableReleaseDownloadURL = nil
             refreshUpdateMenuItem()
             if !silent {
                 showUpToDateAlert(localVersion: currentVersionString())
@@ -378,18 +402,25 @@ class MenuBarManager {
         if isRemoteVersionNewer(remoteVersion, than: localVersion) {
             availableReleaseVersion = remoteVersion
             availableReleaseURL = URL(string: release.htmlURL) ?? fallbackReleaseURL
+            availableReleaseDownloadURL = preferredDMGDownloadURL(from: release.assets, remoteVersion: remoteVersion)
             refreshUpdateMenuItem()
 
             if silent {
                 maybeNotifyForUpdate(version: remoteVersion)
             } else if let releaseURL = availableReleaseURL {
-                showUpdateAvailableAlert(localVersion: localVersion, remoteVersion: remoteVersion, releaseURL: releaseURL)
+                showUpdateAvailableAlert(
+                    localVersion: localVersion,
+                    remoteVersion: remoteVersion,
+                    releaseURL: releaseURL,
+                    downloadURL: availableReleaseDownloadURL
+                )
             }
             return
         }
 
         availableReleaseVersion = nil
         availableReleaseURL = nil
+        availableReleaseDownloadURL = nil
         refreshUpdateMenuItem()
 
         if !silent {
@@ -414,6 +445,12 @@ class MenuBarManager {
     private func refreshUpdateMenuItem() {
         guard let menu = statusItem?.menu,
               let item = menu.item(withTag: updateMenuTag) else { return }
+
+        if isInstallingUpdate {
+            item.title = L.installingUpdate
+            item.isEnabled = false
+            return
+        }
 
         if isCheckingUpdates {
             item.title = L.checkingForUpdates
@@ -475,6 +512,26 @@ class MenuBarManager {
         return numbers
     }
 
+    private func preferredDMGDownloadURL(from assets: [GitHubRelease.Asset], remoteVersion: String) -> URL? {
+        let dmgAssets = assets.filter { $0.name.lowercased().hasSuffix(".dmg") }
+        guard !dmgAssets.isEmpty else { return nil }
+
+        var normalizedVersion = remoteVersion.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedVersion.hasPrefix("v") {
+            normalizedVersion.removeFirst()
+        }
+
+        if let exact = dmgAssets.first(where: { $0.name.lowercased().contains(normalizedVersion) }),
+           let url = URL(string: exact.browserDownloadURL) {
+            return url
+        }
+        if let preferred = dmgAssets.first(where: { $0.name.lowercased().contains("memento-native") }),
+           let url = URL(string: preferred.browserDownloadURL) {
+            return url
+        }
+        return URL(string: dmgAssets[0].browserDownloadURL)
+    }
+
     private func maybeNotifyForUpdate(version: String) {
         let defaults = UserDefaults.standard
         if defaults.string(forKey: lastNotifiedUpdateVersionKey) == version {
@@ -520,13 +577,183 @@ class MenuBarManager {
         center.add(request, withCompletionHandler: nil)
     }
 
-    private func showUpdateAvailableAlert(localVersion: String, remoteVersion: String, releaseURL: URL) {
+    private func showUpdateAvailableAlert(localVersion: String, remoteVersion: String, releaseURL: URL, downloadURL: URL?) {
         let alert = NSAlert()
         alert.messageText = L.updateAvailableTitle
         alert.informativeText = L.updateAvailableMessage(localVersion, remoteVersion)
         alert.alertStyle = .informational
-        alert.addButton(withTitle: L.openReleasePage)
+        if downloadURL != nil {
+            alert.addButton(withTitle: L.installUpdateNow)
+            alert.addButton(withTitle: L.openReleasePage)
+            alert.addButton(withTitle: L.later)
+        } else {
+            alert.addButton(withTitle: L.openReleasePage)
+            alert.addButton(withTitle: L.later)
+        }
+
+        let response = alert.runModal()
+
+        if downloadURL != nil && response == .alertFirstButtonReturn, let downloadURL {
+            Task { @MainActor in
+                await self.installUpdate(remoteVersion: remoteVersion, downloadURL: downloadURL, releaseURL: releaseURL)
+            }
+            return
+        }
+
+        if (downloadURL == nil && response == .alertFirstButtonReturn) ||
+            (downloadURL != nil && response == .alertSecondButtonReturn) {
+            NSWorkspace.shared.open(releaseURL)
+        }
+    }
+
+    private func installUpdate(remoteVersion: String, downloadURL: URL, releaseURL: URL) async {
+        guard !isInstallingUpdate else { return }
+        isInstallingUpdate = true
+        refreshUpdateMenuItem()
+
+        do {
+            let dmgPath = try await downloadReleaseDMG(remoteVersion: remoteVersion, from: downloadURL)
+            defer { try? FileManager.default.removeItem(at: dmgPath) }
+            try runPrivilegedInstallScript(dmgPath: dmgPath.path)
+            showUpdateInstalledAlert()
+        } catch {
+            showUpdateInstallFailedAlert(error: error, releaseURL: releaseURL)
+        }
+
+        isInstallingUpdate = false
+        refreshUpdateMenuItem()
+    }
+
+    private func downloadReleaseDMG(remoteVersion: String, from downloadURL: URL) async throws -> URL {
+        var request = URLRequest(url: downloadURL)
+        request.timeoutInterval = 180
+        request.setValue("MementoCapture", forHTTPHeaderField: "User-Agent")
+
+        let (temporaryURL, response) = try await URLSession.shared.download(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "UpdateInstall", code: 10)
+        }
+
+        let fileManager = FileManager.default
+        let tmpDirectory = fileManager.temporaryDirectory.appendingPathComponent("memento-update", isDirectory: true)
+        try fileManager.createDirectory(at: tmpDirectory, withIntermediateDirectories: true)
+
+        let cleanVersion = remoteVersion.replacingOccurrences(of: "/", with: "-")
+        let destination = tmpDirectory.appendingPathComponent("Memento-Native-\(cleanVersion)-\(UUID().uuidString).dmg")
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destination)
+        return destination
+    }
+
+    private func runPrivilegedInstallScript(dmgPath: String) throws {
+        let fileManager = FileManager.default
+        let scriptURL = fileManager.temporaryDirectory.appendingPathComponent("memento-install-\(UUID().uuidString).sh")
+        let script = """
+        #!/bin/bash
+        set -euo pipefail
+
+        DMG_PATH=\(shellQuote(dmgPath))
+        MOUNT_POINT=""
+
+        /usr/sbin/spctl -a -vv --type open "$DMG_PATH" >/dev/null 2>&1
+
+        cleanup() {
+            if [ -n "${MOUNT_POINT:-}" ]; then
+                /usr/bin/hdiutil detach "$MOUNT_POINT" -quiet || true
+            fi
+        }
+        trap cleanup EXIT
+
+        MOUNT_POINT=$(/usr/bin/hdiutil attach -nobrowse -readonly "$DMG_PATH" | /usr/bin/awk '/\\/Volumes\\// {print substr($0, index($0, "/Volumes/")); exit}')
+        if [ -z "$MOUNT_POINT" ]; then
+            echo "Failed to mount DMG"
+            exit 1
+        fi
+
+        /usr/sbin/spctl -a -vv --type execute "$MOUNT_POINT/Memento Capture.app" >/dev/null 2>&1
+        /usr/sbin/spctl -a -vv --type execute "$MOUNT_POINT/Memento Timeline.app" >/dev/null 2>&1
+
+        /usr/bin/ditto "$MOUNT_POINT/Memento Capture.app" "/Applications/Memento Capture.app"
+        /usr/bin/ditto "$MOUNT_POINT/Memento Timeline.app" "/Applications/Memento Timeline.app"
+        """
+
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        defer { try? fileManager.removeItem(at: scriptURL) }
+
+        let command = "/bin/bash \(shellQuote(scriptURL.path))"
+        let appleScriptCommand = "do shell script \"\(escapeForAppleScript(command))\" with administrator privileges"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", appleScriptCommand]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(
+                domain: "UpdateInstall",
+                code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: message?.isEmpty == false ? message! : "Installer failed"]
+            )
+        }
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private func escapeForAppleScript(_ command: String) -> String {
+        command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func showUpdateInstalledAlert() {
+        let alert = NSAlert()
+        alert.messageText = L.updateInstallCompleteTitle
+        alert.informativeText = L.updateInstallCompleteMessage
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L.restartNow)
         alert.addButton(withTitle: L.later)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            relaunchAfterUpdateInstall()
+        }
+    }
+
+    private func relaunchAfterUpdateInstall() {
+        let relaunchScriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("memento-relaunch-\(UUID().uuidString).sh")
+        let script = """
+        #!/bin/bash
+        /bin/sleep 1
+        /usr/bin/open "/Applications/Memento Capture.app"
+        """
+        try? script.write(to: relaunchScriptURL, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: relaunchScriptURL.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [relaunchScriptURL.path]
+        try? process.run()
+        NSApp.terminate(nil)
+    }
+
+    private func showUpdateInstallFailedAlert(error: Error, releaseURL: URL) {
+        let alert = NSAlert()
+        alert.messageText = L.updateInstallFailedTitle
+        alert.informativeText = L.updateInstallFailedMessage + "\n\n\(error.localizedDescription)"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L.openReleasePage)
+        alert.addButton(withTitle: L.ok)
 
         if alert.runModal() == .alertFirstButtonReturn {
             NSWorkspace.shared.open(releaseURL)

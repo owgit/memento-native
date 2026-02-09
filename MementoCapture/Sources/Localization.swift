@@ -68,6 +68,21 @@ enum L {
     static var updateCheckFailedMessage: String {
         isSwedish ? "Kontrollera internetanslutningen och försök igen." : "Check your internet connection and try again."
     }
+    static var installUpdateNow: String { isSwedish ? "Installera nu" : "Install now" }
+    static var installingUpdate: String { isSwedish ? "Installerar uppdatering..." : "Installing update..." }
+    static var updateInstallCompleteTitle: String { isSwedish ? "Uppdatering installerad" : "Update installed" }
+    static var updateInstallCompleteMessage: String {
+        isSwedish
+            ? "Den nya versionen är installerad i Applications. Starta om appen för att börja använda den."
+            : "The new version is installed in Applications. Restart the app to start using it."
+    }
+    static var restartNow: String { isSwedish ? "Starta om nu" : "Restart now" }
+    static var updateInstallFailedTitle: String { isSwedish ? "Kunde inte installera uppdateringen" : "Could not install update" }
+    static var updateInstallFailedMessage: String {
+        isSwedish
+            ? "Automatisk installation misslyckades. Du kan öppna release-sidan och installera manuellt."
+            : "Automatic install failed. You can open the release page and install manually."
+    }
     static var openReleasePage: String { isSwedish ? "Öppna release-sida" : "Open release page" }
     static var later: String { isSwedish ? "Senare" : "Later" }
     static var updateNotificationTitle: String { isSwedish ? "Memento-uppdatering finns" : "Memento update available" }
