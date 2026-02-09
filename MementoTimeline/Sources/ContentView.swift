@@ -78,6 +78,10 @@ private enum TimelineVisualTokens {
     static let commandPanelWidth: CGFloat = 620
     static let commandPanelCornerRadius: CGFloat = 18
     static let commandRowCornerRadius: CGFloat = 10
+    static let hoverPreviewWidth: CGFloat = 188
+    static let hoverPreviewHeight: CGFloat = 104
+    static let hoverPreviewCornerRadius: CGFloat = 10
+    static let hoverPreviewCardWidth: CGFloat = 204
 }
 
 struct ContentView: View {
@@ -96,6 +100,11 @@ struct ContentView: View {
     @State private var openingSearchResultFrameId: Int?
     @State private var commandPaletteQuery: String = ""
     @State private var selectedCommandIndex: Int = 0
+    @State private var hoverPreviewFrameIndex: Int?
+    @State private var hoverPreviewImage: NSImage?
+    @State private var hoverPreviewLoading = false
+    @State private var hoverPreviewTask: Task<Void, Never>?
+    @State private var hoverPreviewCache: [Int: NSImage] = [:]
     
     var body: some View {
         ZStack {
@@ -238,6 +247,10 @@ struct ContentView: View {
         }
         .onAppear { 
             setupKeyHandling()
+        }
+        .onDisappear {
+            hoverPreviewTask?.cancel()
+            hoverPreviewTask = nil
         }
         .onHover { hovering in
             if hovering {
@@ -437,28 +450,14 @@ struct ContentView: View {
                             ? clampedActiveIndex
                             : Int(round(hoverProgress * CGFloat(maxIndex)))
                         let markerX = isDragging ? currentX : geometry.size.width * hoverProgress
-                        let minX: CGFloat = 46
-                        let maxX = max(minX, geometry.size.width - minX)
+                        let previewHalfWidth = TimelineVisualTokens.hoverPreviewCardWidth / 2
+                        let minX: CGFloat = previewHalfWidth + 8
+                        let maxX = max(minX, geometry.size.width - previewHalfWidth - 8)
                         let clampedMarkerX = min(max(markerX, minX), maxX)
 
                         if let segment = manager.getSegmentForIndex(hoverIndex) {
-                            VStack(spacing: 4) {
-                                Text(segment.timeString.isEmpty ? "--:--" : formatTime(segment.timeString))
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(segment.color.opacity(0.90))
-                                    )
-
-                                Text(segment.appName)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .lineLimit(1)
-                            }
-                            .offset(x: clampedMarkerX - 40, y: -47)
+                            timelineHoverPreview(hoverIndex: hoverIndex, segment: segment)
+                                .offset(x: clampedMarkerX - previewHalfWidth, y: -136)
                         }
 
                         RoundedRectangle(cornerRadius: 2)
@@ -485,8 +484,13 @@ struct ContentView: View {
                     case .active(let location):
                         isHoveringTimeline = true
                         mouseLocation = location
+                        let width = max(1, geometry.size.width)
+                        let prog = max(0, min(1, location.x / width))
+                        let hoverIndex = Int(round(prog * CGFloat(maxIndex)))
+                        requestTimelineHoverPreview(for: hoverIndex)
                     case .ended:
                         isHoveringTimeline = false
+                        clearTimelineHoverPreview()
                     }
                 }
                 .gesture(
@@ -497,6 +501,7 @@ struct ContentView: View {
                             let width = max(1, geometry.size.width)
                             let prog = max(0, min(1, value.location.x / width))
                             dragFrameIndex = Int(prog * CGFloat(maxIndex))
+                            requestTimelineHoverPreview(for: dragFrameIndex)
 
                             // Throttle: only load frame every 150ms during drag
                             let now = Date()
@@ -511,6 +516,7 @@ struct ContentView: View {
                             let prog = max(0, min(1, value.location.x / width))
                             let finalIndex = Int(prog * CGFloat(maxIndex))
                             manager.jumpToFrame(finalIndex)
+                            clearTimelineHoverPreview()
                         }
                 )
             }
@@ -567,6 +573,146 @@ struct ContentView: View {
             return timePart
         }
         return clean
+    }
+
+    private func timelineHoverPreview(hoverIndex: Int, segment: TimelineManager.TimelineSegment) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ZStack {
+                if hoverPreviewFrameIndex == hoverIndex, let image = hoverPreviewImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    VStack(spacing: 5) {
+                        if hoverPreviewLoading && hoverPreviewFrameIndex == hoverIndex {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white.opacity(0.9))
+                            Text(L.timelinePreviewLoading)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.75))
+                        } else {
+                            Image(systemName: "photo")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text(L.timelinePreviewUnavailable)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.55))
+                        }
+                    }
+                }
+            }
+            .frame(width: TimelineVisualTokens.hoverPreviewWidth, height: TimelineVisualTokens.hoverPreviewHeight)
+            .clipShape(RoundedRectangle(cornerRadius: TimelineVisualTokens.hoverPreviewCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: TimelineVisualTokens.hoverPreviewCornerRadius)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 0.8)
+            )
+
+            HStack(spacing: 7) {
+                AppIconView(appName: segment.appName)
+                    .frame(width: 15, height: 15)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(segment.timeString.isEmpty ? "--:--" : formatTimeDisplay(segment.timeString))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text(segment.appName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Text("#\(hoverIndex + 1)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.1))
+                    )
+            }
+            .frame(width: TimelineVisualTokens.hoverPreviewWidth, alignment: .leading)
+        }
+        .frame(width: TimelineVisualTokens.hoverPreviewCardWidth, alignment: .leading)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.78))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(segment.color.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+    }
+
+    private func requestTimelineHoverPreview(for index: Int) {
+        guard manager.totalFrames > 0 else {
+            clearTimelineHoverPreview()
+            return
+        }
+
+        let clampedIndex = min(max(0, index), manager.totalFrames - 1)
+        guard hoverPreviewFrameIndex != clampedIndex else { return }
+
+        hoverPreviewFrameIndex = clampedIndex
+
+        if let cached = hoverPreviewCache[clampedIndex] {
+            hoverPreviewImage = cached
+            hoverPreviewLoading = false
+            return
+        }
+
+        hoverPreviewTask?.cancel()
+        hoverPreviewImage = nil
+        hoverPreviewLoading = true
+
+        hoverPreviewTask = Task {
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+
+            let preview = await manager.loadPreviewFrame(at: clampedIndex, maxDimension: 420)
+            guard !Task.isCancelled else { return }
+            guard hoverPreviewFrameIndex == clampedIndex else { return }
+
+            hoverPreviewImage = preview
+            hoverPreviewLoading = false
+
+            if let preview {
+                hoverPreviewCache[clampedIndex] = preview
+                trimHoverPreviewCache(keeping: clampedIndex)
+            }
+        }
+    }
+
+    private func clearTimelineHoverPreview() {
+        hoverPreviewTask?.cancel()
+        hoverPreviewTask = nil
+        hoverPreviewFrameIndex = nil
+        hoverPreviewImage = nil
+        hoverPreviewLoading = false
+    }
+
+    private func trimHoverPreviewCache(keeping index: Int) {
+        let maxCacheItems = 24
+        guard hoverPreviewCache.count > maxCacheItems else { return }
+
+        for key in hoverPreviewCache.keys.sorted() where key != index {
+            hoverPreviewCache.removeValue(forKey: key)
+            if hoverPreviewCache.count <= maxCacheItems {
+                break
+            }
+        }
     }
 
     private var timelineStartLabel: String {

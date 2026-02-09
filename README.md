@@ -17,7 +17,7 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 - **Action Hub / Command Palette** (`⌘F`) for search + quick actions
 - Direct search panel moved to `⌘K`
 - Menubar **Control Center** chips (recording state, permission state, last capture)
-- Smarter capture auto-pause (idle detection + video/streaming detection)
+- Smarter capture auto-pause (idle + video/streaming + private/incognito browsing)
 - Improved search result reliability for older history and clearer loading states
 
 ## Use Cases
@@ -38,7 +38,7 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 | ⌨️ Action Hub | Command palette (`⌘F`) for actions and fast search |
 | 🛠️ Setup Hub | Unified onboarding + permission repair flow |
 | 🎛️ Menubar Control Center | Recording/paused, permission, last-capture status chips |
-| ⏸️ Smart Auto-Pause | Pause when idle or during video/streaming playback |
+| ⏸️ Smart Auto-Pause | Pause when idle, during video/streaming playback, and in private/incognito browser windows |
 | 🎨 App Learning | Auto color-codes apps in timeline |
 | 📹 H.264 Video | Hardware-accelerated encoding |
 | 💾 Full-Text Search | SQLite FTS5 |
@@ -82,6 +82,16 @@ Quick summary:
 4. Manual fallback: **System Settings** → **Privacy & Security** → **Screen Recording** and enable `Memento Capture`
 
 You can re-open Setup Hub anytime from the menu bar app.
+
+## When Capture Pauses Automatically
+
+Capture pauses automatically in these cases:
+
+- The screen is locked or the screen saver is active
+- You are idle (default 90 seconds, configurable in Settings)
+- Video/streaming playback is detected (motion + media context)
+- A private/incognito browser window is active (Chrome/Arc/Brave/Edge/Safari/Firefox best-effort detection)
+- `Memento Timeline` is the frontmost app
 
 ## Keyboard Shortcuts (Timeline)
 

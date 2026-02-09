@@ -18,6 +18,7 @@ enum L {
     static var statistics: String { isSwedish ? "Statistik..." : "Statistics..." }
     static var cleanOldFrames: String { isSwedish ? "Rensa gamla frames..." : "Clean Old Frames..." }
     static var saveDebugScreenshot: String { isSwedish ? "Spara debug-skärmdump" : "Save Debug Screenshot" }
+    static var advancedMenu: String { isSwedish ? "Avancerat" : "Advanced" }
     static var quitMemento: String { isSwedish ? "Avsluta Memento" : "Quit Memento" }
     static var settingsMenu: String { isSwedish ? "Inställningar..." : "Settings..." }
     static var controlCenterTitle: String { isSwedish ? "Control Center" : "Control Center" }

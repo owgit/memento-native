@@ -18,6 +18,7 @@ class Settings: ObservableObject {
         case pauseWhenIdle = "pauseWhenIdle"
         case idleThresholdSeconds = "idleThresholdSeconds"
         case pauseDuringVideo = "pauseDuringVideo"
+        case pauseDuringPrivateBrowsing = "pauseDuringPrivateBrowsing"
     }
     
     // MARK: - Published Properties
@@ -36,6 +37,10 @@ class Settings: ObservableObject {
 
     @Published var pauseDuringVideo: Bool {
         didSet { defaults.set(pauseDuringVideo, forKey: Key.pauseDuringVideo.rawValue) }
+    }
+
+    @Published var pauseDuringPrivateBrowsing: Bool {
+        didSet { defaults.set(pauseDuringPrivateBrowsing, forKey: Key.pauseDuringPrivateBrowsing.rawValue) }
     }
     
     @Published var clipboardMonitoring: Bool {
@@ -75,6 +80,7 @@ class Settings: ObservableObject {
         self.pauseWhenIdle = defaults.object(forKey: Key.pauseWhenIdle.rawValue) as? Bool ?? true
         self.idleThresholdSeconds = defaults.object(forKey: Key.idleThresholdSeconds.rawValue) as? Double ?? 90.0
         self.pauseDuringVideo = defaults.object(forKey: Key.pauseDuringVideo.rawValue) as? Bool ?? true
+        self.pauseDuringPrivateBrowsing = defaults.object(forKey: Key.pauseDuringPrivateBrowsing.rawValue) as? Bool ?? true
         self.clipboardMonitoring = defaults.bool(forKey: Key.clipboardMonitoring.rawValue)
         self.autoStart = defaults.bool(forKey: Key.autoStart.rawValue)
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7

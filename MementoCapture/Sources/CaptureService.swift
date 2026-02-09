@@ -153,6 +153,15 @@ class CaptureService {
         
         // Get browser URL and tab title
         let browserInfo = BrowserCapture.getCurrentBrowserInfo()
+
+        // Skip capture in private/incognito browsing contexts.
+        if Settings.shared.pauseDuringPrivateBrowsing && browserInfo?.isPrivateBrowsing == true {
+            highMotionMediaStreak = 0
+            videoPauseUntil = nil
+            pausedVideoBundleId = nil
+            print("🕶️  Skipping capture - Private/incognito browsing detected")
+            return
+        }
         
         // Get clipboard content (if enabled)
         let clipboardContent = ClipboardCapture.shared.getNewClipboardContent()

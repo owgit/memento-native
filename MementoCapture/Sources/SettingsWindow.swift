@@ -70,12 +70,16 @@ struct SettingsView: View {
                 }
 
                 Toggle(L.pauseDuringVideo, isOn: $settings.pauseDuringVideo)
+                Toggle(L.pauseDuringPrivateBrowsing, isOn: $settings.pauseDuringPrivateBrowsing)
+
+                Text(L.smartPauseHint)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Label(L.captureSettings, systemImage: "camera")
                     .font(.headline)
             }
-            
-            Divider().padding(.vertical, 8)
             
             // Privacy Section
             Section {
@@ -110,12 +114,15 @@ struct SettingsView: View {
                         .disabled(newExcludedApp.isEmpty)
                     }
                 }
+
+                Text(L.excludedAppsHint)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Label(L.privacy, systemImage: "hand.raised")
                     .font(.headline)
             }
-            
-            Divider().padding(.vertical, 8)
             
             // Storage Section
             Section {
@@ -163,12 +170,8 @@ struct SettingsView: View {
                     .font(.headline)
             }
             
-            Divider().padding(.vertical, 8)
-            
             // System Section
             Section {
-                Toggle(L.autoStart, isOn: $settings.autoStart)
-                
                 Button(action: {
                     PermissionGuideController.shared.show()
                 }) {
@@ -182,12 +185,12 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.plain)
+
+                Toggle(L.autoStart, isOn: $settings.autoStart)
             } header: {
                 Label(L.system, systemImage: "gearshape")
                     .font(.headline)
             }
-            
-            Divider().padding(.vertical, 8)
             
             // Support Section
             Section {
@@ -280,9 +283,20 @@ private extension L {
     static var pauseWhenIdle: String { isSwedish ? "Pausa när jag är inaktiv" : "Pause when I'm idle" }
     static var idleAfter: String { isSwedish ? "Inaktiv efter" : "Idle after" }
     static var pauseDuringVideo: String { isSwedish ? "Pausa under film/streaming" : "Pause during video/streaming" }
+    static var pauseDuringPrivateBrowsing: String { isSwedish ? "Pausa i inkognito/privat läge" : "Pause in private/incognito mode" }
+    static var smartPauseHint: String {
+        isSwedish
+            ? "Smart pause stoppar inspelning automatiskt i känsliga eller irrelevanta lägen."
+            : "Smart pause automatically pauses capture in sensitive or low-value contexts."
+    }
     static var privacy: String { isSwedish ? "Sekretess" : "Privacy" }
     static var clipboardMonitoring: String { isSwedish ? "Fånga urklipp" : "Capture clipboard" }
     static var excludedApps: String { isSwedish ? "Exkluderade appar" : "Excluded apps" }
+    static var excludedAppsHint: String {
+        isSwedish
+            ? "Lägg till appar som aldrig ska OCR-tolkas."
+            : "Add apps that should never be OCR scanned."
+    }
     static var appName: String { isSwedish ? "Appnamn" : "App name" }
     static var add: String { isSwedish ? "Lägg till" : "Add" }
     static var storage: String { isSwedish ? "Lagring" : "Storage" }

@@ -51,6 +51,8 @@ enum L {
     static var searchDatabaseError: String { isSwedish ? "Kunde inte läsa sökdatabasen. Prova igen." : "Could not read search database. Try again." }
     static var searchOpenError: String { isSwedish ? "Kunde inte öppna träffen. Ladda äldre historik och försök igen." : "Could not open this match. Load older history and try again." }
     static var searchErrorTitle: String { isSwedish ? "Sökningen misslyckades" : "Search failed" }
+    static var timelinePreviewLoading: String { isSwedish ? "Laddar preview..." : "Loading preview..." }
+    static var timelinePreviewUnavailable: String { isSwedish ? "Ingen preview" : "No preview" }
     static var loadedPrefix: String { isSwedish ? "Laddat" : "Loaded" }
     static var loadingOlderHistory: String { isSwedish ? "Laddar äldre historik..." : "Loading older history..." }
     static var olderHistoryHintShort: String { isSwedish ? "← för äldre" : "← for older" }

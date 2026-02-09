@@ -474,6 +474,46 @@ class TimelineManager: ObservableObject {
         let frameId = videoIds[videoIndex]
         return timelineSegments.first(where: { $0.id == frameId })
     }
+
+    func loadPreviewFrame(at index: Int, maxDimension: CGFloat = 420) async -> NSImage? {
+        guard index >= 0 && index < totalFrames else { return nil }
+
+        let videoIndex = index / framesPerVideo
+        let frameInVideo = index % framesPerVideo
+        guard let videoURL = videoFiles[videoIndex] else { return nil }
+        let localFramesPerVideo = framesPerVideo
+
+        return await Task.detached(priority: .utility) {
+            let asset = AVAsset(url: videoURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.08, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.08, preferredTimescale: 600)
+            generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
+            generator.apertureMode = .cleanAperture
+
+            let duration = try? await asset.load(.duration)
+            let totalSeconds = max(0, duration?.seconds ?? 0)
+            let framePositionDenominator = max(1, localFramesPerVideo - 1)
+            let proportionalSeconds = totalSeconds > 0
+                ? (Double(frameInVideo) / Double(framePositionDenominator)) * totalSeconds
+                : Double(frameInVideo) * 2.0
+            let clampedSeconds = totalSeconds > 0
+                ? min(max(0, proportionalSeconds), totalSeconds)
+                : max(0, proportionalSeconds)
+            let targetTime = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+
+            do {
+                let (cgImage, _) = try await generator.image(at: targetTime)
+                return NSImage(
+                    cgImage: cgImage,
+                    size: NSSize(width: cgImage.width, height: cgImage.height)
+                )
+            } catch {
+                return nil
+            }
+        }.value
+    }
     
     func loadFrame(at index: Int) {
         guard index >= 0 && index < totalFrames else { return }

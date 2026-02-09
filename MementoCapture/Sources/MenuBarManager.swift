@@ -75,17 +75,11 @@ class MenuBarManager {
 
         menu.addItem(NSMenuItem.separator())
         
-        // Toggle capture
-        let toggleItem = NSMenuItem(title: L.pauseRecording, action: #selector(toggleCapture), keyEquivalent: "p")
-        toggleItem.target = self
-        toggleItem.tag = 101
-        menu.addItem(toggleItem)
-        
         // Open Timeline
         let timelineItem = NSMenuItem(title: L.openTimeline, action: #selector(openTimeline), keyEquivalent: "t")
         timelineItem.target = self
         menu.addItem(timelineItem)
-        
+
         // Settings
         let settingsItem = NSMenuItem(title: L.settingsMenu, action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -96,33 +90,28 @@ class MenuBarManager {
         updateItem.target = self
         updateItem.tag = updateMenuTag
         menu.addItem(updateItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
-        // Permission status
-        let permissionItem = NSMenuItem(title: L.permissions, action: #selector(checkPermission), keyEquivalent: "")
-        permissionItem.target = self
-        permissionItem.tag = 102
-        menu.addItem(permissionItem)
-        updatePermissionMenuItem()
-        
-        // Debug screenshot
+
+        // Advanced submenu: keep technical utilities out of the primary menu flow.
+        let advancedItem = NSMenuItem(title: L.advancedMenu, action: nil, keyEquivalent: "")
+        let advancedMenu = NSMenu(title: L.advancedMenu)
+
         let debugItem = NSMenuItem(title: L.saveDebugScreenshot, action: #selector(saveDebugScreenshot), keyEquivalent: "d")
         debugItem.target = self
-        menu.addItem(debugItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        // Stats
+        advancedMenu.addItem(debugItem)
+
         let statsItem = NSMenuItem(title: L.statistics, action: #selector(showStats), keyEquivalent: "s")
         statsItem.target = self
-        menu.addItem(statsItem)
-        
-        // Clean up
+        advancedMenu.addItem(statsItem)
+
         let cleanItem = NSMenuItem(title: L.cleanOldFrames, action: #selector(cleanOldFrames), keyEquivalent: "")
         cleanItem.target = self
-        menu.addItem(cleanItem)
-        
+        advancedMenu.addItem(cleanItem)
+
+        advancedItem.submenu = advancedMenu
+        menu.addItem(advancedItem)
+
         menu.addItem(NSMenuItem.separator())
         
         // Buy me a coffee
@@ -289,7 +278,6 @@ class MenuBarManager {
         let changed = latestPermission != hasScreenPermission
         hasScreenPermission = latestPermission
         syncCaptureServiceState()
-        updatePermissionMenuItem()
         if changed || forceIconUpdate {
             updateIcon()
         }
@@ -908,12 +896,6 @@ class MenuBarManager {
     @objc private func checkPermission() {
         PermissionGuideController.shared.show(reason: .manual)
         refreshPermissionState(forceIconUpdate: true)
-    }
-    
-    private func updatePermissionMenuItem() {
-        if let menu = statusItem?.menu, let item = menu.item(withTag: 102) {
-            item.title = hasScreenPermission ? L.permissionsOk : L.permissionsMissing
-        }
     }
     
     @objc private func openBuyMeACoffee() {
