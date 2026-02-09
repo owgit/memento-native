@@ -2,6 +2,12 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.1] - 2026-02-09
+
+### Fixed
+- In-app auto-update installer no longer fails on DMG Gatekeeper context checks
+- Restart action after successful in-app update now reliably relaunches `Memento Capture`
+
 ## [2.0.0] - 2026-02-09
 
 ### Added

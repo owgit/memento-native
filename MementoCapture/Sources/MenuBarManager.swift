@@ -656,8 +656,7 @@ class MenuBarManager {
 
         DMG_PATH=\(shellQuote(dmgPath))
         MOUNT_POINT=""
-
-        /usr/sbin/spctl -a -vv --type open "$DMG_PATH" >/dev/null 2>&1
+        /usr/bin/codesign --verify --verbose=2 "$DMG_PATH" >/dev/null
 
         cleanup() {
             if [ -n "${MOUNT_POINT:-}" ]; then
@@ -731,18 +730,15 @@ class MenuBarManager {
     }
 
     private func relaunchAfterUpdateInstall() {
-        let relaunchScriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("memento-relaunch-\(UUID().uuidString).sh")
-        let script = """
-        #!/bin/bash
-        /bin/sleep 1
-        /usr/bin/open "/Applications/Memento Capture.app"
-        """
-        try? script.write(to: relaunchScriptURL, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: relaunchScriptURL.path)
-
+        // Launch a detached relaunch command so the new instance survives app termination.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [relaunchScriptURL.path]
+        process.arguments = [
+            "-lc",
+            "nohup /bin/sh -c 'sleep 1; /usr/bin/open -n \"/Applications/Memento Capture.app\"' >/dev/null 2>&1 &"
+        ]
+        process.standardOutput = nil
+        process.standardError = nil
         try? process.run()
         NSApp.terminate(nil)
     }
