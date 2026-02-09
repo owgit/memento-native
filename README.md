@@ -11,6 +11,15 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 
 > Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
 
+## Latest (v2.0.0)
+
+- Unified **Setup Hub** for first-run, permission fixes, and update recovery
+- **Action Hub / Command Palette** (`⌘F`) for search + quick actions
+- Direct search panel moved to `⌘K`
+- Menubar **Control Center** chips (recording state, permission state, last capture)
+- Smarter capture auto-pause (idle detection + video/streaming detection)
+- Improved search result reliability for older history and clearer loading states
+
 ## Use Cases
 
 - 🔍 **Find by keyword** — Search "invoice", "meeting", "password"
@@ -26,6 +35,10 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 | 📸 Screen Recording | ScreenCaptureKit (macOS 14+) |
 | 🔍 OCR Search | Apple Vision text recognition |
 | 🧠 Semantic Search | Find by meaning, not just keywords |
+| ⌨️ Action Hub | Command palette (`⌘F`) for actions and fast search |
+| 🛠️ Setup Hub | Unified onboarding + permission repair flow |
+| 🎛️ Menubar Control Center | Recording/paused, permission, last-capture status chips |
+| ⏸️ Smart Auto-Pause | Pause when idle or during video/streaming playback |
 | 🎨 App Learning | Auto color-codes apps in timeline |
 | 📹 H.264 Video | Hardware-accelerated encoding |
 | 💾 Full-Text Search | SQLite FTS5 |
@@ -43,7 +56,7 @@ Download the latest DMG from [Releases](https://github.com/owgit/memento-native/
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
-./build-dmg.sh        # Creates dist/Memento-Native-1.0.0.dmg
+./build-dmg.sh 2.0.0  # Creates dist/Memento-Native-2.0.0.dmg
 # Or build individually:
 cd MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh
@@ -59,13 +72,24 @@ Quick summary:
 2. Replace both apps in `/Applications`
 3. Start `Memento Capture` first
 4. Re-check Screen Recording permission if macOS asks
+5. If capture still fails, open **Setup Hub** from the menu bar and run **Repair Permissions**
 
 ## Setup Permissions
 
-1. Open **System Settings** → **Privacy & Security** → **Screen Recording**
-2. Click **+** and add `/Applications/Memento Capture.app`
-3. Enable it (toggle ON)
-4. Start the app: `open /Applications/Memento\ Capture.app`
+1. Open `/Applications/Memento Capture.app`
+2. Follow **Setup Hub** prompts (recommended)
+3. If needed, use **Fix/Repair Permissions** in Setup Hub
+4. Manual fallback: **System Settings** → **Privacy & Security** → **Screen Recording** and enable `Memento Capture`
+
+You can re-open Setup Hub anytime from the menu bar app.
+
+## Keyboard Shortcuts (Timeline)
+
+- `⌘F` — Open Action Hub (Command Palette)
+- `⌘K` — Open direct Search panel
+- `⌘T` — Toggle OCR text panel
+- `←` / `→` — Previous / next frame
+- `Home` / `End` — First / last frame
 
 ## Requirements
 
@@ -83,7 +107,7 @@ Quick summary:
 |--------|-------|
 | **CPU** | ~1-3% (idle between captures) |
 | **RAM** | ~50-100MB |
-| **Capture interval** | Every 2 seconds |
+| **Capture interval** | Default 2 seconds (configurable) |
 | **Video codec** | H.264 hardware-accelerated |
 
 ## How It Works

@@ -22,9 +22,27 @@ DMG_NAME="Memento-Native-${VERSION}"
 DMG_DIR="dist"
 STAGING_DIR="${DMG_DIR}/staging"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NOTARY_PROFILE="${MEMENTO_NOTARY_PROFILE:-}"
+NOTARY_PROFILE=""
 DMG_PATH="${DMG_DIR}/${DMG_NAME}.dmg"
 ALLOW_UNTRUSTED_RELEASE="${MEMENTO_ALLOW_UNTRUSTED_RELEASE:-0}"
+PREFERRED_NOTARY_PROFILES=("MEMENTO_NOTARY" "memento-notary")
+
+resolve_notary_profile() {
+    if [ -n "${MEMENTO_NOTARY_PROFILE:-}" ]; then
+        echo "$MEMENTO_NOTARY_PROFILE"
+        return
+    fi
+
+    local profile
+    for profile in "${PREFERRED_NOTARY_PROFILES[@]}"; do
+        if xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1; then
+            echo "$profile"
+            return
+        fi
+    done
+
+    echo ""
+}
 
 select_sign_identity() {
     if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
@@ -54,11 +72,15 @@ select_sign_identity() {
 }
 
 SIGN_IDENTITY="$(select_sign_identity)"
+NOTARY_PROFILE="$(resolve_notary_profile)"
 if [ "$SIGN_IDENTITY" = "-" ]; then
     echo "⚠️  No signing identity found. Falling back to ad-hoc signing."
     echo "   Set MEMENTO_CODESIGN_IDENTITY=\"Developer ID Application: ...\" for trusted releases."
 else
     echo "🔏 Using signing identity: $SIGN_IDENTITY"
+fi
+if [ -n "$NOTARY_PROFILE" ]; then
+    echo "🧾 Using notarization profile: $NOTARY_PROFILE"
 fi
 
 if [ "$ALLOW_UNTRUSTED_RELEASE" != "1" ]; then
@@ -71,7 +93,10 @@ if [ "$ALLOW_UNTRUSTED_RELEASE" != "1" ]; then
     fi
     if [ -z "$NOTARY_PROFILE" ]; then
         echo "❌ Refusing public release build without notarization profile."
-        echo "   Set MEMENTO_NOTARY_PROFILE to your notarytool keychain profile."
+        echo "   Set MEMENTO_NOTARY_PROFILE to your notarytool keychain profile,"
+        echo "   or create one of the default profiles: MEMENTO_NOTARY / memento-notary."
+        echo "   Example:"
+        echo "   xcrun notarytool store-credentials MEMENTO_NOTARY --apple-id \"<apple-id>\" --team-id \"<team-id>\" --password \"<app-password>\""
         echo "   For local testing only, set:"
         echo "   MEMENTO_ALLOW_UNTRUSTED_RELEASE=1 ./build-dmg.sh ${VERSION}"
         exit 1
@@ -187,10 +212,14 @@ cat > "$TIMELINE_APP/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-# Sign both apps
+# Sign both apps (Hardened Runtime + entitlements)
 echo "🔐 Signing apps..."
-codesign --force --deep --sign "$SIGN_IDENTITY" "$CAPTURE_APP"
-codesign --force --deep --sign "$SIGN_IDENTITY" "$TIMELINE_APP"
+codesign --force --options runtime --timestamp \
+    --entitlements "${SCRIPT_DIR}/MementoCapture/MementoCapture.entitlements" \
+    --sign "$SIGN_IDENTITY" "$CAPTURE_APP"
+codesign --force --options runtime --timestamp \
+    --entitlements "${SCRIPT_DIR}/MementoTimeline/MementoTimeline.entitlements" \
+    --sign "$SIGN_IDENTITY" "$TIMELINE_APP"
 
 # Create Applications symlink for DMG
 ln -s /Applications "${STAGING_DIR}/Applications"
@@ -269,7 +298,7 @@ hdiutil create -volname "Memento Native" \
 
 if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
     echo "🔐 Signing DMG..."
-    codesign --force --sign "$SIGN_IDENTITY" "${DMG_PATH}"
+    codesign --force --timestamp --sign "$SIGN_IDENTITY" "${DMG_PATH}"
 fi
 
 # Optional notarization for trusted public distribution.

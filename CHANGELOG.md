@@ -2,6 +2,43 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.0] - 2026-02-09
+
+### Added
+- Unified Setup Hub for first launch, permission recovery, and update recovery
+- Menubar Control Center chips for recording state, permission state, and last capture
+- Timeline Action Hub / Command Palette with quick actions and time jump
+- Smart capture auto-pause options (idle + video/stream detection)
+- Hardened runtime entitlements for Capture and Timeline bundles
+
+### Improved
+- Search UX states, keyboard flow, and robustness when opening older history results
+- Timeline history loading feedback and scrubber polish
+- Simpler release workflow: automatic notary profile discovery (`MEMENTO_NOTARY` / `memento-notary`)
+- Shortcut model updated: `⌘F` opens Action Hub, `⌘K` opens direct search
+
+### Security
+- Public DMG pipeline now uses Developer ID signing + notarization + stapling for trusted distribution
+
+## [1.0.8] - 2026-02-08
+
+### Added
+- Unified Setup Hub flow for first launch, permission recovery, and updates
+- Menubar Control Center chips for recording state, permission state, and last capture
+- Timeline Command Palette / Action Hub with command and time-jump actions
+- Smart auto-pause options (idle + video/stream detection)
+
+### Improved
+- Search UX with clearer loading/empty/error states and better keyboard flow
+- Search result opening for older history is more robust
+- Timeline history loading feedback and scrubber polish
+- Shortcut model updated: `⌘F` opens Action Hub, `⌘K` opens direct search
+
+### Fixed
+- Reduced repeated permission prompt loops
+- Better permission recovery and post-update trust flow
+- Menubar top-row layout clipping/overlap issues
+
 ## [1.0.7] - 2026-02-07
 
 ### Fixed

@@ -37,8 +37,12 @@ else
     echo "🔏 Using signing identity: $SIGN_IDENTITY"
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 sign_app() {
-    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+    codesign --force --options runtime --timestamp \
+        --entitlements "${SCRIPT_DIR}/MementoCapture.entitlements" \
+        --sign "$SIGN_IDENTITY" "$APP_DIR"
 }
 
 echo "🔨 Building release..."
@@ -75,7 +79,6 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp .build/release/memento-capture "$BINARY_PATH"
 
 # Copy icon
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
 
 # Create Info.plist with dynamic build number
