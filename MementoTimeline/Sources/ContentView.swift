@@ -84,8 +84,32 @@ private enum TimelineVisualTokens {
     static let hoverPreviewCardWidth: CGFloat = 204
 }
 
+private enum FloatingControlColors {
+    static func textPrimary(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(0.92)
+        }
+        return Color(red: 34 / 255, green: 37 / 255, blue: 43 / 255)
+    }
+
+    static func textSecondary(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(0.78)
+        }
+        return Color(red: 51 / 255, green: 55 / 255, blue: 63 / 255)
+    }
+
+    static func textMuted(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(0.62)
+        }
+        return Color(red: 74 / 255, green: 79 / 255, blue: 90 / 255)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showControls = true
     @State private var controlsTimer: Timer?
     @State private var isHoveringTimeline = false
@@ -324,7 +348,7 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(formatTimeDisplay(segment.timeString))
                                 .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
+                                .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
                             Text(segment.appName)
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(segment.color)
@@ -343,7 +367,7 @@ struct ContentView: View {
                 } else {
                     Text("\(manager.currentFrameIndex + 1) / \(manager.totalFrames)")
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary.opacity(0.6))
+                        .foregroundColor(FloatingControlColors.textSecondary(for: colorScheme))
                 }
                 
                 Spacer()
@@ -531,17 +555,17 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundColor(.white.opacity(0.55))
+            .foregroundColor(FloatingControlColors.textSecondary(for: colorScheme).opacity(0.95))
 
             HStack(spacing: 8) {
                 if manager.isLoadingMore {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(.white.opacity(0.8))
+                        .tint(FloatingControlColors.textSecondary(for: colorScheme).opacity(0.9))
                 } else {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(FloatingControlColors.textMuted(for: colorScheme))
                 }
 
                 Text(historyLoadStatusText)
@@ -552,11 +576,11 @@ struct ContentView: View {
 
                 if !manager.isLoadingMore {
                     Text(L.olderHistoryHintShort)
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundColor(FloatingControlColors.textMuted(for: colorScheme))
                 }
             }
             .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.white.opacity(0.6))
+            .foregroundColor(FloatingControlColors.textSecondary(for: colorScheme).opacity(0.95))
         }
     }
     
@@ -1597,6 +1621,7 @@ struct ControlButtonStyle: PrimitiveButtonStyle {
 }
 
 struct ControlButtonView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let configuration: PrimitiveButtonStyle.Configuration
     let size: CGFloat
     let isActive: Bool
@@ -1604,7 +1629,15 @@ struct ControlButtonView: View {
     
     var body: some View {
         configuration.label
-            .foregroundColor(isActive ? .cyan : (isPressed ? .white : .white.opacity(0.85)))
+            .foregroundColor(
+                isActive
+                    ? FloatingControlColors.textPrimary(for: colorScheme)
+                    : (
+                        isPressed
+                            ? FloatingControlColors.textPrimary(for: colorScheme)
+                            : FloatingControlColors.textSecondary(for: colorScheme)
+                    )
+            )
             .frame(width: size, height: size)
             .background(
                 Circle()
