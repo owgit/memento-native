@@ -13,7 +13,7 @@ enum StorageMigrationError: LocalizedError {
 
 /// Moves existing storage data to a new folder while preserving all files.
 enum StorageMigrator {
-    struct Result {
+    struct Result: Sendable {
         var movedItems: Int = 0
         var copiedItems: Int = 0
         var conflictRenames: Int = 0
@@ -75,7 +75,7 @@ enum StorageMigrator {
                 continue
             }
 
-            if !sourceIsDirectory.boolValue && !destinationIsDirectory.boolValue && filesLikelyEqual(sourceItem, destinationItem) {
+            if !sourceIsDirectory.boolValue && !destinationIsDirectory.boolValue && filesMatchExactly(sourceItem, destinationItem) {
                 result.skippedItems += 1
                 try? fileManager.removeItem(at: sourceItem)
                 continue
@@ -99,11 +99,9 @@ enum StorageMigrator {
         }
     }
 
-    private static func filesLikelyEqual(_ lhs: URL, _ rhs: URL) -> Bool {
-        let keys: Set<URLResourceKey> = [.fileSizeKey]
-        let lhsSize = try? lhs.resourceValues(forKeys: keys).fileSize
-        let rhsSize = try? rhs.resourceValues(forKeys: keys).fileSize
-        return lhsSize != nil && lhsSize == rhsSize
+    private static func filesMatchExactly(_ lhs: URL, _ rhs: URL) -> Bool {
+        let fileManager = FileManager.default
+        return fileManager.contentsEqual(atPath: lhs.path, andPath: rhs.path)
     }
 
     private static func uniqueConflictURL(for filename: String, in directory: URL) -> URL {
@@ -134,4 +132,3 @@ enum StorageMigrator {
         return Array(childComponents.prefix(parentComponents.count)) == parentComponents
     }
 }
-

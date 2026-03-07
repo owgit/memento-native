@@ -3,6 +3,39 @@ import AVFoundation
 import CoreGraphics
 import VideoToolbox
 
+enum VideoEncoderError: LocalizedError {
+    case writerUnavailable
+    case appendFailed(status: AVAssetWriter.Status, details: String?)
+    case finalizeFailed(status: AVAssetWriter.Status, details: String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .writerUnavailable:
+            return "Video writer is unavailable."
+        case let .appendFailed(status, details):
+            return "Failed to append frame (status: \(Self.statusLabel(for: status)))\(Self.suffix(details))."
+        case let .finalizeFailed(status, details):
+            return "Failed to finalize video (status: \(Self.statusLabel(for: status)))\(Self.suffix(details))."
+        }
+    }
+
+    private static func statusLabel(for status: AVAssetWriter.Status) -> String {
+        switch status {
+        case .unknown: return "unknown"
+        case .writing: return "writing"
+        case .completed: return "completed"
+        case .failed: return "failed"
+        case .cancelled: return "cancelled"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private static func suffix(_ details: String?) -> String {
+        guard let details, !details.isEmpty else { return "" }
+        return ": \(details)"
+    }
+}
+
 /// Hardware-accelerated video encoder using VideoToolbox
 class VideoEncoder {
     private var assetWriter: AVAssetWriter?
@@ -11,6 +44,7 @@ class VideoEncoder {
     
     private let outputDirectory: URL
     private let framesPerVideo: Int
+    private let frameDuration: TimeInterval
     private var currentVideoIndex: Int = 0
     private var frameIndex: Int = 0
     private var isInitialized = false
@@ -19,9 +53,10 @@ class VideoEncoder {
     private var width: Int = 0
     private var height: Int = 0
     
-    init(outputDirectory: URL, framesPerVideo: Int) {
+    init(outputDirectory: URL, framesPerVideo: Int, frameDuration: TimeInterval) {
         self.outputDirectory = outputDirectory
         self.framesPerVideo = framesPerVideo
+        self.frameDuration = frameDuration
         // Don't start video yet - wait for first frame to get dimensions
     }
     
@@ -89,54 +124,75 @@ class VideoEncoder {
             currentVideoIndex = index
         }
     }
-    
-    func addFrame(_ image: CGImage, frameIndex globalFrameIndex: Int) {
+
+    @discardableResult
+    func addFrame(_ image: CGImage) throws -> Bool {
         // Initialize on first frame
         if !isInitialized {
             initializeWriter(width: image.width, height: image.height, index: currentVideoIndex)
         }
-        
-        guard let videoInput = videoInput,
-              let pixelBufferAdaptor = pixelBufferAdaptor,
-              videoInput.isReadyForMoreMediaData else {
-            print("⚠️ Video input not ready")
-            return
+
+        guard let assetWriter,
+              let videoInput = videoInput,
+              let pixelBufferAdaptor = pixelBufferAdaptor else {
+            throw VideoEncoderError.writerUnavailable
         }
-        
+
+        guard videoInput.isReadyForMoreMediaData else {
+            if assetWriter.status == .failed || assetWriter.status == .cancelled {
+                throw VideoEncoderError.appendFailed(
+                    status: assetWriter.status,
+                    details: assetWriter.error?.localizedDescription
+                )
+            }
+            print("⚠️ Video input not ready")
+            return false
+        }
+
         // Create pixel buffer
         guard let pixelBuffer = createPixelBuffer(from: image) else {
             print("⚠️ Failed to create pixel buffer")
-            return
+            return false
         }
-        
-        // Calculate presentation time
-        let presentationTime = CMTime(seconds: Double(frameIndex) * 2.0, preferredTimescale: 600)
-        
+
+        // Each MP4 starts from a local zero-based timeline so frame extraction stays stable.
+        let presentationTime = CMTime(seconds: Double(frameIndex) * frameDuration, preferredTimescale: 600)
+
         // Append frame
         if pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
             frameIndex += 1
+            return frameIndex >= framesPerVideo
         } else {
-            print("⚠️ Failed to append frame")
+            throw VideoEncoderError.appendFailed(
+                status: assetWriter.status,
+                details: assetWriter.error?.localizedDescription
+            )
         }
     }
-    
-    func finalize() {
+
+    func finalize() async throws {
         guard let videoInput = videoInput,
               let assetWriter = assetWriter else { return }
-        
+
+        let finalizedVideoIndex = currentVideoIndex
         videoInput.markAsFinished()
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        assetWriter.finishWriting {
-            semaphore.signal()
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            assetWriter.finishWriting {
+                continuation.resume()
+            }
         }
-        semaphore.wait()
-        
-        print("✅ Finalized video \(currentVideoIndex).mp4")
-        
-        self.assetWriter = nil
-        self.videoInput = nil
-        self.pixelBufferAdaptor = nil
+
+        defer { resetWriterState() }
+
+        guard assetWriter.status == .completed else {
+            throw VideoEncoderError.finalizeFailed(
+                status: assetWriter.status,
+                details: assetWriter.error?.localizedDescription
+            )
+        }
+
+        print("✅ Finalized video \(finalizedVideoIndex).mp4")
     }
     
     private func createPixelBuffer(from image: CGImage) -> CVPixelBuffer? {
@@ -173,7 +229,14 @@ class VideoEncoder {
         }
         
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
+
         return buffer
+    }
+
+    private func resetWriterState() {
+        assetWriter = nil
+        videoInput = nil
+        pixelBufferAdaptor = nil
+        isInitialized = false
     }
 }

@@ -8,6 +8,11 @@ enum StorageCleaner {
         let deletedVideos: Int
     }
 
+    private struct VideoRange {
+        let fileURL: URL
+        let frameIds: ClosedRange<Int>
+    }
+
     static func cleanup(
         dbPath: String,
         cachePath: URL,
@@ -22,6 +27,13 @@ enum StorageCleaner {
             return Result(deletedFrames: 0, deletedVideos: 0)
         }
         defer { sqlite3_close(db) }
+
+        let maxFrameId = fetchMaxFrameId(db: db)
+        let videoRanges = buildVideoRanges(
+            cachePath: cachePath,
+            maxFrameId: maxFrameId,
+            defaultFramesPerVideo: framesPerVideo
+        )
 
         if deleteAll {
             frameIdsToDelete = fetchFrameIds(db: db, sql: "SELECT id FROM FRAME")
@@ -60,10 +72,9 @@ enum StorageCleaner {
         }
 
         let deletedVideos = deleteVideoFiles(
-            cachePath: cachePath,
             deletedFrameIds: Set(frameIdsToDelete),
-            deleteAll: deleteAll,
-            framesPerVideo: framesPerVideo
+            videoRanges: videoRanges,
+            deleteAll: deleteAll
         )
 
         return Result(deletedFrames: frameIdsToDelete.count, deletedVideos: deletedVideos)
@@ -81,6 +92,17 @@ enum StorageCleaner {
             frameIds.append(Int(sqlite3_column_int(stmt, 0)))
         }
         return frameIds
+    }
+
+    private static func fetchMaxFrameId(db: OpaquePointer?) -> Int {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT MAX(id) FROM FRAME", -1, &stmt, nil) == SQLITE_OK else {
+            return 0
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(stmt, 0))
     }
 
     private static func fetchFrameIdsOlderThan(db: OpaquePointer?, cutoffISO8601: String) -> [Int] {
@@ -114,36 +136,59 @@ enum StorageCleaner {
         sqlite3_exec(db, sql, nil, nil, nil)
     }
 
-    private static func deleteVideoFiles(
+    private static func buildVideoRanges(
         cachePath: URL,
-        deletedFrameIds: Set<Int>,
-        deleteAll: Bool,
-        framesPerVideo: Int
-    ) -> Int {
+        maxFrameId: Int,
+        defaultFramesPerVideo: Int
+    ) -> [VideoRange] {
         let fileManager = FileManager.default
         guard let files = try? fileManager.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil) else {
-            return 0
+            return []
         }
 
+        let sortedVideos = files
+            .filter { $0.pathExtension == "mp4" }
+            .compactMap { fileURL -> (startFrameId: Int, fileURL: URL)? in
+                guard let startFrameId = Int(fileURL.deletingPathExtension().lastPathComponent) else {
+                    return nil
+                }
+                return (startFrameId, fileURL)
+            }
+            .sorted { $0.startFrameId < $1.startFrameId }
+
+        return sortedVideos.enumerated().compactMap { index, video in
+            let nextStartFrameId = sortedVideos.indices.contains(index + 1)
+                ? sortedVideos[index + 1].startFrameId
+                : (maxFrameId + 1)
+            let endExclusive = min(video.startFrameId + defaultFramesPerVideo, nextStartFrameId)
+            guard endExclusive > video.startFrameId else { return nil }
+            return VideoRange(
+                fileURL: video.fileURL,
+                frameIds: video.startFrameId...(endExclusive - 1)
+            )
+        }
+    }
+
+    private static func deleteVideoFiles(
+        deletedFrameIds: Set<Int>,
+        videoRanges: [VideoRange],
+        deleteAll: Bool
+    ) -> Int {
+        let fileManager = FileManager.default
+
         var deletedVideos = 0
-        for file in files where file.pathExtension == "mp4" {
+        for videoRange in videoRanges {
             if deleteAll {
-                if (try? fileManager.removeItem(at: file)) != nil {
+                if (try? fileManager.removeItem(at: videoRange.fileURL)) != nil {
                     deletedVideos += 1
                 }
                 continue
             }
 
-            guard let videoStartFrameId = Int(file.deletingPathExtension().lastPathComponent) else {
-                continue
-            }
-
-            let canDeleteVideo = (0..<framesPerVideo).allSatisfy { offset in
-                deletedFrameIds.contains(videoStartFrameId + offset)
-            }
+            let canDeleteVideo = videoRange.frameIds.allSatisfy { deletedFrameIds.contains($0) }
             guard canDeleteVideo else { continue }
 
-            if (try? fileManager.removeItem(at: file)) != nil {
+            if (try? fileManager.removeItem(at: videoRange.fileURL)) != nil {
                 deletedVideos += 1
             }
         }
@@ -151,4 +196,3 @@ enum StorageCleaner {
         return deletedVideos
     }
 }
-

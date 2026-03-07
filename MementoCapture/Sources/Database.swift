@@ -5,6 +5,9 @@ import SQLite3
 class Database {
     private var db: OpaquePointer?
     private let path: String
+    private var insertFrameStatement: OpaquePointer?
+    private var insertContentStatement: OpaquePointer?
+    private var insertEmbeddingStatement: OpaquePointer?
     
     init(path: String) {
         self.path = path
@@ -18,6 +21,7 @@ class Database {
 
     func close() {
         guard db != nil else { return }
+        finalizeStatements()
         sqlite3_close(db)
         db = nil
     }
@@ -101,9 +105,57 @@ class Database {
                 VALUES (new.frame_id, new.text, new.x, new.y, new.w, new.h);
             END
         """)
+
+        prepareStatements()
     }
     
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private func prepareStatements() {
+        prepareStatement(
+            """
+            INSERT OR REPLACE INTO FRAME (id, window_title, time, url, tab_title, app_bundle_id, clipboard, app_category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            statement: &insertFrameStatement
+        )
+        prepareStatement(
+            "INSERT INTO CONTENT (frame_id, text, x, y, w, h) VALUES (?, ?, ?, ?, ?, ?)",
+            statement: &insertContentStatement
+        )
+        prepareStatement(
+            "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, quantized, text_summary) VALUES (?, ?, ?, ?)",
+            statement: &insertEmbeddingStatement
+        )
+    }
+
+    private func prepareStatement(_ sql: String, statement: inout OpaquePointer?) {
+        finalizeStatement(&statement)
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            if let db {
+                print("⚠️ Failed to prepare statement: \(String(cString: sqlite3_errmsg(db)))")
+            }
+            return
+        }
+    }
+
+    private func resetStatement(_ statement: OpaquePointer?) {
+        sqlite3_clear_bindings(statement)
+        sqlite3_reset(statement)
+    }
+
+    private func finalizeStatements() {
+        finalizeStatement(&insertFrameStatement)
+        finalizeStatement(&insertContentStatement)
+        finalizeStatement(&insertEmbeddingStatement)
+    }
+
+    private func finalizeStatement(_ statement: inout OpaquePointer?) {
+        if let pointer = statement {
+            sqlite3_finalize(pointer)
+            statement = nil
+        }
+    }
     
     func insertFrame(
         frameId: Int,
@@ -115,69 +167,79 @@ class Database {
         appBundleId: String? = nil,
         clipboard: String? = nil,
         appCategory: String? = nil
-    ) {
-        // Insert frame with extended metadata
-        let frameSQL = """
-            INSERT OR REPLACE INTO FRAME (id, window_title, time, url, tab_title, app_bundle_id, clipboard, app_category)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        var stmt: OpaquePointer?
-        
-        if sqlite3_prepare_v2(db, frameSQL, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_int(stmt, 1, Int32(frameId))
-            sqlite3_bind_text(stmt, 2, windowTitle, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 3, time, -1, SQLITE_TRANSIENT)
-            if let url = url {
-                sqlite3_bind_text(stmt, 4, url, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 4)
-            }
-            if let tabTitle = tabTitle {
-                sqlite3_bind_text(stmt, 5, tabTitle, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 5)
-            }
-            if let appBundleId = appBundleId {
-                sqlite3_bind_text(stmt, 6, appBundleId, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 6)
-            }
-            if let clipboard = clipboard {
-                sqlite3_bind_text(stmt, 7, clipboard, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 7)
-            }
-            if let appCategory = appCategory {
-                sqlite3_bind_text(stmt, 8, appCategory, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 8)
-            }
-            sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
-        }
-        
-        // Insert text blocks
-        guard !textBlocks.isEmpty else { return }
-        
-        let contentSQL = "INSERT INTO CONTENT (frame_id, text, x, y, w, h) VALUES (?, ?, ?, ?, ?, ?)"
-        
-        // Use transaction for batch insert
-        execute("BEGIN TRANSACTION")
-        
-        for block in textBlocks {
-            if sqlite3_prepare_v2(db, contentSQL, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_int(stmt, 1, Int32(frameId))
-                sqlite3_bind_text(stmt, 2, block.text, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_int(stmt, 3, Int32(block.x))
-                sqlite3_bind_int(stmt, 4, Int32(block.y))
-                sqlite3_bind_int(stmt, 5, Int32(block.width))
-                sqlite3_bind_int(stmt, 6, Int32(block.height))
-                sqlite3_step(stmt)
-                sqlite3_finalize(stmt)
+    ) -> Bool {
+        guard execute("BEGIN IMMEDIATE TRANSACTION") else { return false }
+
+        var shouldRollback = true
+        defer {
+            if shouldRollback {
+                _ = execute("ROLLBACK")
             }
         }
-        
-        execute("COMMIT")
+
+        guard let frameStatement = insertFrameStatement else {
+            logSQLiteError("frame insert statement unavailable")
+            return false
+        }
+
+        resetStatement(frameStatement)
+        sqlite3_bind_int(frameStatement, 1, Int32(frameId))
+        sqlite3_bind_text(frameStatement, 2, windowTitle, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(frameStatement, 3, time, -1, SQLITE_TRANSIENT)
+        if let url = url {
+            sqlite3_bind_text(frameStatement, 4, url, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(frameStatement, 4)
+        }
+        if let tabTitle = tabTitle {
+            sqlite3_bind_text(frameStatement, 5, tabTitle, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(frameStatement, 5)
+        }
+        if let appBundleId = appBundleId {
+            sqlite3_bind_text(frameStatement, 6, appBundleId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(frameStatement, 6)
+        }
+        if let clipboard = clipboard {
+            sqlite3_bind_text(frameStatement, 7, clipboard, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(frameStatement, 7)
+        }
+        if let appCategory = appCategory {
+            sqlite3_bind_text(frameStatement, 8, appCategory, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(frameStatement, 8)
+        }
+
+        guard step(frameStatement, context: "insert frame \(frameId)") else {
+            return false
+        }
+
+        if !textBlocks.isEmpty {
+            guard let contentStatement = insertContentStatement else {
+                logSQLiteError("content insert statement unavailable")
+                return false
+            }
+
+            for block in textBlocks {
+                resetStatement(contentStatement)
+                sqlite3_bind_int(contentStatement, 1, Int32(frameId))
+                sqlite3_bind_text(contentStatement, 2, block.text, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_int(contentStatement, 3, Int32(block.x))
+                sqlite3_bind_int(contentStatement, 4, Int32(block.y))
+                sqlite3_bind_int(contentStatement, 5, Int32(block.width))
+                sqlite3_bind_int(contentStatement, 6, Int32(block.height))
+
+                guard step(contentStatement, context: "insert OCR block for frame \(frameId)") else {
+                    return false
+                }
+            }
+        }
+
+        guard execute("COMMIT") else { return false }
+        shouldRollback = false
+        return true
     }
     
     func getMaxFrameId() -> Int {
@@ -217,20 +279,20 @@ class Database {
     
     // MARK: - Embedding Storage (Quantized Int8)
     
-    func insertEmbedding(frameId: Int, vector: Data, textSummary: String, quantized: Bool = true) {
-        let sql = "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, quantized, text_summary) VALUES (?, ?, ?, ?)"
-        var stmt: OpaquePointer?
-        
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_int(stmt, 1, Int32(frameId))
-            _ = vector.withUnsafeBytes { ptr in
-                sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(vector.count), SQLITE_TRANSIENT)
-            }
-            sqlite3_bind_int(stmt, 3, quantized ? 1 : 0)
-            sqlite3_bind_text(stmt, 4, textSummary, -1, SQLITE_TRANSIENT)
-            sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
+    func insertEmbedding(frameId: Int, vector: Data, textSummary: String, quantized: Bool = true) -> Bool {
+        guard let stmt = insertEmbeddingStatement else {
+            logSQLiteError("embedding insert statement unavailable")
+            return false
         }
+
+        resetStatement(stmt)
+        sqlite3_bind_int(stmt, 1, Int32(frameId))
+        _ = vector.withUnsafeBytes { ptr in
+            sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(vector.count), SQLITE_TRANSIENT)
+        }
+        sqlite3_bind_int(stmt, 3, quantized ? 1 : 0)
+        sqlite3_bind_text(stmt, 4, textSummary, -1, SQLITE_TRANSIENT)
+        return step(stmt, context: "insert embedding for frame \(frameId)")
     }
     
     func getAllEmbeddings() -> [(frameId: Int, vector: Data, quantized: Bool, summary: String)] {
@@ -318,5 +380,22 @@ class Database {
             return false
         }
         return true
+    }
+
+    private func step(_ statement: OpaquePointer?, context: String) -> Bool {
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_DONE else {
+            logSQLiteError("\(context) failed (\(result))")
+            return false
+        }
+        return true
+    }
+
+    private func logSQLiteError(_ prefix: String) {
+        guard let db else {
+            print("⚠️ SQLite error: \(prefix)")
+            return
+        }
+        print("⚠️ SQLite error: \(prefix): \(String(cString: sqlite3_errmsg(db)))")
     }
 }

@@ -33,6 +33,7 @@ struct SettingsView: View {
     @ObservedObject private var settings = Settings.shared
     @State private var newExcludedApp = ""
     @State private var showingFolderPicker = false
+    @State private var isMigratingStorage = false
     
     var body: some View {
         Form {
@@ -149,10 +150,15 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if isMigratingStorage {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                         Spacer()
                         Button(L.change) {
                             selectFolder()
                         }
+                        .disabled(isMigratingStorage)
                     }
                 }
                 
@@ -230,27 +236,33 @@ struct SettingsView: View {
         panel.directoryURL = URL(fileURLWithPath: settings.storagePath)
         
         if panel.runModal() == .OK, let url = panel.url {
-            do {
-                let result = try settings.updateStoragePath(url.path)
-                let alert = NSAlert()
-                alert.messageText = L.storageMigrationDone
-                alert.informativeText = L.storageMigrationSummary(
-                    (settings.storagePath as NSString).abbreviatingWithTildeInPath,
-                    result.movedItems,
-                    result.copiedItems,
-                    result.conflictRenames,
-                    result.skippedItems
-                )
-                alert.alertStyle = .informational
-                alert.addButton(withTitle: L.ok)
-                alert.runModal()
-            } catch {
-                let alert = NSAlert()
-                alert.messageText = L.storageMigrationFailed
-                alert.informativeText = error.localizedDescription
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: L.ok)
-                alert.runModal()
+            isMigratingStorage = true
+
+            Task { @MainActor in
+                defer { isMigratingStorage = false }
+
+                do {
+                    let result = try await settings.updateStoragePath(url.path)
+                    let alert = NSAlert()
+                    alert.messageText = L.storageMigrationDone
+                    alert.informativeText = L.storageMigrationSummary(
+                        (settings.storagePath as NSString).abbreviatingWithTildeInPath,
+                        result.movedItems,
+                        result.copiedItems,
+                        result.conflictRenames,
+                        result.skippedItems
+                    )
+                    alert.alertStyle = .informational
+                    alert.addButton(withTitle: L.ok)
+                    alert.runModal()
+                } catch {
+                    let alert = NSAlert()
+                    alert.messageText = L.storageMigrationFailed
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: L.ok)
+                    alert.runModal()
+                }
             }
         }
     }

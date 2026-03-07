@@ -2,6 +2,755 @@ import SwiftUI
 import AVFoundation
 import SQLite3
 
+private struct VideoClip: Sendable {
+    let startFrameId: Int
+    let frameCount: Int
+}
+
+private struct VideoFrameLocation: Sendable {
+    let clipIndex: Int
+    let frameOffset: Int
+    let clip: VideoClip
+}
+
+private struct VideoCatalogEntry: Sendable {
+    let url: URL
+    let modDate: Date?
+    let clip: VideoClip
+}
+
+private struct VideoCatalogSnapshot: Sendable {
+    let catalog: [VideoCatalogEntry]
+    let lookup: VideoFrameLookup
+    let refreshedAt: Date
+}
+
+private struct VideoFrameLookup: Sendable {
+    let clips: [VideoClip]
+    private let displayStarts: [Int]
+    let totalFrames: Int
+
+    init(clips: [VideoClip]) {
+        self.clips = clips
+
+        var starts: [Int] = []
+        starts.reserveCapacity(clips.count)
+
+        var runningTotal = 0
+        for clip in clips {
+            starts.append(runningTotal)
+            runningTotal += clip.frameCount
+        }
+
+        self.displayStarts = starts
+        self.totalFrames = runningTotal
+    }
+
+    func frameId(forDisplayIndex index: Int) -> Int? {
+        guard let location = location(forDisplayIndex: index) else { return nil }
+        return location.clip.startFrameId + location.frameOffset
+    }
+
+    func displayIndex(forFrameId frameId: Int) -> Int? {
+        guard let clipIndex = clipIndex(containing: frameId) else { return nil }
+        let clip = clips[clipIndex]
+        return displayStarts[clipIndex] + (frameId - clip.startFrameId)
+    }
+
+    func location(forDisplayIndex index: Int) -> VideoFrameLocation? {
+        guard index >= 0, index < totalFrames else { return nil }
+
+        var low = 0
+        var high = displayStarts.count - 1
+        var match = 0
+
+        while low <= high {
+            let mid = (low + high) / 2
+            if displayStarts[mid] <= index {
+                match = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+
+        let clip = clips[match]
+        let frameOffset = index - displayStarts[match]
+        guard frameOffset < clip.frameCount else { return nil }
+
+        return VideoFrameLocation(clipIndex: match, frameOffset: frameOffset, clip: clip)
+    }
+
+    private func clipIndex(containing frameId: Int) -> Int? {
+        guard !clips.isEmpty else { return nil }
+
+        var low = 0
+        var high = clips.count - 1
+        var match: Int?
+
+        while low <= high {
+            let mid = (low + high) / 2
+            if clips[mid].startFrameId <= frameId {
+                match = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+
+        guard let match else { return nil }
+        let clip = clips[match]
+        let clipEnd = clip.startFrameId + clip.frameCount
+        return frameId < clipEnd ? match : nil
+    }
+}
+
+private struct TimelineSearchRequest: Sendable {
+    let dbPath: String
+    let query: String
+    let lookup: VideoFrameLookup
+    let textSearchLimit: Int
+    let metadataSearchLimit: Int
+}
+
+private struct TimelineSearchExecutionResult: Sendable {
+    let results: [TimelineManager.SearchResult]
+    let errorMessage: String?
+}
+
+private enum VideoCatalogLoader {
+    static func refreshIfNeeded(
+        cachePath: String,
+        dbPath: String,
+        framesPerVideo: Int,
+        existingCatalog: [VideoCatalogEntry],
+        lastRefreshAt: Date,
+        refreshInterval: TimeInterval,
+        force: Bool = false
+    ) -> VideoCatalogSnapshot {
+        let now = Date()
+        if !force,
+           !existingCatalog.isEmpty,
+           now.timeIntervalSince(lastRefreshAt) < refreshInterval {
+            return VideoCatalogSnapshot(
+                catalog: existingCatalog,
+                lookup: VideoFrameLookup(clips: existingCatalog.map(\.clip)),
+                refreshedAt: lastRefreshAt
+            )
+        }
+
+        let fileManager = FileManager.default
+        let cacheURL = URL(fileURLWithPath: cachePath)
+        let resourceKeys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
+
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: cacheURL,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles]
+        ) else {
+            return VideoCatalogSnapshot(
+                catalog: [],
+                lookup: VideoFrameLookup(clips: []),
+                refreshedAt: now
+            )
+        }
+
+        let maxFrameId = fetchMaxFrameId(dbPath: dbPath)
+        let sortedVideos = files
+            .filter { $0.pathExtension == "mp4" }
+            .compactMap { fileURL -> (startFrameId: Int, url: URL, modDate: Date?)? in
+                guard let startFrameId = Int(fileURL.deletingPathExtension().lastPathComponent),
+                      let values = try? fileURL.resourceValues(forKeys: resourceKeys),
+                      let fileSize = values.fileSize,
+                      fileSize >= 10_000 else {
+                    return nil
+                }
+
+                return (startFrameId, fileURL, values.contentModificationDate)
+            }
+            .sorted { $0.startFrameId < $1.startFrameId }
+
+        let catalog = sortedVideos.enumerated().compactMap { index, video in
+            let nextStartFrameId = sortedVideos.indices.contains(index + 1)
+                ? sortedVideos[index + 1].startFrameId
+                : (maxFrameId + 1)
+            let inferredFrameCount = min(framesPerVideo, nextStartFrameId - video.startFrameId)
+            let frameCount = max(1, inferredFrameCount)
+
+            return VideoCatalogEntry(
+                url: video.url,
+                modDate: video.modDate,
+                clip: VideoClip(startFrameId: video.startFrameId, frameCount: frameCount)
+            )
+        }
+
+        return VideoCatalogSnapshot(
+            catalog: catalog,
+            lookup: VideoFrameLookup(clips: catalog.map(\.clip)),
+            refreshedAt: now
+        )
+    }
+
+    private static func fetchMaxFrameId(dbPath: String) -> Int {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_close(db) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT MAX(id) FROM FRAME", -1, &statement, nil) == SQLITE_OK else {
+            return 0
+        }
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(statement, 0))
+    }
+}
+
+private enum TimelineTimestampParser {
+    private static let fallbackISO8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let legacyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    static func parse(_ rawValue: String) -> Date? {
+        let cleaned = rawValue.replacingOccurrences(of: "\"", with: "")
+
+        if let parsed = try? Date(cleaned, strategy: .iso8601) {
+            return parsed
+        }
+
+        if let parsed = fallbackISO8601Formatter.date(from: cleaned) {
+            return parsed
+        }
+
+        return legacyFormatter.date(from: cleaned)
+    }
+}
+
+private final class TimelineLogWriter {
+    static let shared = TimelineLogWriter()
+
+    private let queue = DispatchQueue(label: "com.memento.timeline.log-writer", qos: .utility)
+    private let logPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".cache/memento/swift_timeline.log")
+    private var fileHandle: FileHandle?
+
+    private init() {}
+
+    func append(_ message: String) {
+        let line = "\(Date()): \(message)\n"
+
+        queue.async { [self] in
+            guard let data = line.data(using: .utf8) else { return }
+            ensureHandle()
+            fileHandle?.seekToEndOfFile()
+            fileHandle?.write(data)
+        }
+    }
+
+    private func ensureHandle() {
+        if fileHandle != nil {
+            return
+        }
+
+        let directory = logPath.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logPath.path) {
+            FileManager.default.createFile(atPath: logPath.path, contents: nil)
+        }
+        fileHandle = try? FileHandle(forWritingTo: logPath)
+    }
+}
+
+private enum TimelineSearchWorker {
+    private static let duplicateFrameWindow = 12
+    private static let duplicateTimeWindow: TimeInterval = 15 * 60
+    private static let fallbackCandidateMultiplier = 4
+
+    static func performTextSearch(_ request: TimelineSearchRequest) -> TimelineSearchExecutionResult {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(request.dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            return TimelineSearchExecutionResult(results: [], errorMessage: L.searchDatabaseError)
+        }
+        defer { sqlite3_close(db) }
+
+        var results: [TimelineManager.SearchResult] = []
+        let lowerQuery = request.query.lowercased()
+        let likePattern = "%\(request.query)%"
+        let searchTokens = normalizedSearchTokens(for: request.query)
+        let normalizedQuery = normalizeForSearch(request.query)
+        let ftsPattern = buildFTSPattern(from: searchTokens)
+        var seenFrames = Set<Int>()
+
+        let ftsSql = """
+            SELECT fts.frame_id, fts.text, f.time, f.window_title, f.url, bm25(CONTENT_FTS) AS rank
+            FROM CONTENT_FTS fts
+            JOIN FRAME f ON CAST(fts.frame_id AS INTEGER) = f.id
+            WHERE CONTENT_FTS MATCH ?
+            ORDER BY rank ASC
+            LIMIT \(request.textSearchLimit)
+        """
+
+        var stmt: OpaquePointer?
+        if !ftsPattern.isEmpty,
+           sqlite3_prepare_v2(db, ftsSql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, ftsPattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if Task.isCancelled {
+                    sqlite3_finalize(stmt)
+                    return TimelineSearchExecutionResult(results: [], errorMessage: nil)
+                }
+
+                let frameId = Int(sqlite3_column_int(stmt, 0))
+                guard !seenFrames.contains(frameId) else { continue }
+                guard request.lookup.displayIndex(forFrameId: frameId) != nil else { continue }
+                seenFrames.insert(frameId)
+
+                let text = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
+                let timestamp = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
+                let appName = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
+                let url = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
+
+                results.append(
+                    TimelineManager.SearchResult(
+                        frameId: frameId,
+                        text: String(text.prefix(100)),
+                        timestamp: timestamp,
+                        appName: appName,
+                        url: url,
+                        matchType: .ocr
+                    )
+                )
+            }
+            sqlite3_finalize(stmt)
+        }
+
+        appendAggregatedOCRMatches(
+            from: db,
+            request: request,
+            normalizedQuery: normalizedQuery,
+            tokens: searchTokens,
+            seenFrames: &seenFrames,
+            results: &results
+        )
+
+        let metaSql = """
+            SELECT id, url, tab_title, clipboard, window_title, time
+            FROM FRAME
+            WHERE url LIKE ? COLLATE NOCASE
+               OR tab_title LIKE ? COLLATE NOCASE
+               OR clipboard LIKE ? COLLATE NOCASE
+            ORDER BY id DESC
+            LIMIT \(request.metadataSearchLimit)
+        """
+
+        if sqlite3_prepare_v2(db, metaSql, -1, &stmt, nil) == SQLITE_OK {
+            for index in 1...3 {
+                sqlite3_bind_text(stmt, Int32(index), likePattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            }
+
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if Task.isCancelled {
+                    sqlite3_finalize(stmt)
+                    return TimelineSearchExecutionResult(results: [], errorMessage: nil)
+                }
+
+                let frameId = Int(sqlite3_column_int(stmt, 0))
+                guard !seenFrames.contains(frameId) else { continue }
+                guard request.lookup.displayIndex(forFrameId: frameId) != nil else { continue }
+
+                let url = sqlite3_column_text(stmt, 1).map { String(cString: $0) }
+                let tabTitle = sqlite3_column_text(stmt, 2).map { String(cString: $0) }
+                let clipboard = sqlite3_column_text(stmt, 3).map { String(cString: $0) }
+                let windowTitle = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? ""
+                let timestamp = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? ""
+
+                let matchType: TimelineManager.SearchResult.MatchType
+                let displayText: String
+
+                if let url, url.lowercased().contains(lowerQuery) {
+                    matchType = .url
+                    displayText = url
+                } else if let tabTitle, tabTitle.lowercased().contains(lowerQuery) {
+                    matchType = .title
+                    displayText = tabTitle
+                } else if let clipboard, clipboard.lowercased().contains(lowerQuery) {
+                    matchType = .clipboard
+                    displayText = String(clipboard.prefix(100))
+                } else {
+                    continue
+                }
+
+                let result = TimelineManager.SearchResult(
+                    frameId: frameId,
+                    text: displayText,
+                    timestamp: timestamp,
+                    appName: windowTitle,
+                    url: url,
+                    matchType: matchType
+                )
+                results.append(result)
+                seenFrames.insert(frameId)
+            }
+            sqlite3_finalize(stmt)
+        }
+
+        return TimelineSearchExecutionResult(
+            results: deduplicate(results),
+            errorMessage: nil
+        )
+    }
+
+    private static func appendAggregatedOCRMatches(
+        from db: OpaquePointer?,
+        request: TimelineSearchRequest,
+        normalizedQuery: String,
+        tokens: [String],
+        seenFrames: inout Set<Int>,
+        results: inout [TimelineManager.SearchResult]
+    ) {
+        guard let db, !tokens.isEmpty, !normalizedQuery.isEmpty else { return }
+        guard results.count < request.textSearchLimit else { return }
+
+        let candidatePattern = buildFTSAnyTokenPattern(from: tokens)
+        guard !candidatePattern.isEmpty else { return }
+
+        let fallbackLimit = max(32, request.textSearchLimit * fallbackCandidateMultiplier)
+        let fallbackSql = """
+            WITH candidate_frames AS (
+                SELECT DISTINCT CAST(frame_id AS INTEGER) AS frame_id
+                FROM CONTENT_FTS
+                WHERE CONTENT_FTS MATCH ?
+                LIMIT \(fallbackLimit)
+            )
+            SELECT f.id, GROUP_CONCAT(c.text, ' ') AS all_text, f.time, f.window_title, f.url
+            FROM candidate_frames candidates
+            JOIN FRAME f ON f.id = candidates.frame_id
+            JOIN CONTENT c ON c.frame_id = f.id
+            GROUP BY f.id
+            ORDER BY f.id DESC
+            LIMIT \(fallbackLimit)
+        """
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, fallbackSql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, candidatePattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if Task.isCancelled || results.count >= request.textSearchLimit {
+                return
+            }
+
+            let frameId = Int(sqlite3_column_int(stmt, 0))
+            guard !seenFrames.contains(frameId) else { continue }
+            guard request.lookup.displayIndex(forFrameId: frameId) != nil else { continue }
+
+            let aggregatedText = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
+            guard matchesNormalizedOCRText(aggregatedText, normalizedQuery: normalizedQuery, tokens: tokens) else {
+                continue
+            }
+
+            let timestamp = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
+            let appName = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
+            let url = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
+
+            results.append(
+                TimelineManager.SearchResult(
+                    frameId: frameId,
+                    text: searchSnippet(from: aggregatedText, query: request.query, tokens: tokens),
+                    timestamp: timestamp,
+                    appName: appName,
+                    url: url,
+                    matchType: .ocr
+                )
+            )
+            seenFrames.insert(frameId)
+        }
+    }
+
+    static func performSemanticSearch(_ request: TimelineSearchRequest) -> TimelineSearchExecutionResult {
+        let embeddingService = EmbeddingService()
+
+        guard let queryVector = embeddingService.embed(request.query) else {
+            return performTextSearch(request)
+        }
+        let queryQuantized = embeddingService.quantize(queryVector)
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(request.dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            return TimelineSearchExecutionResult(results: [], errorMessage: L.searchDatabaseError)
+        }
+        defer { sqlite3_close(db) }
+
+        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            return TimelineSearchExecutionResult(results: [], errorMessage: nil)
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        var matches: [(frameId: Int, similarity: Float, summary: String)] = []
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if Task.isCancelled {
+                return TimelineSearchExecutionResult(results: [], errorMessage: nil)
+            }
+
+            let frameId = Int(sqlite3_column_int(stmt, 0))
+            guard request.lookup.displayIndex(forFrameId: frameId) != nil else { continue }
+
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            let vectorData = Data(bytes: blobPtr, count: blobSize)
+            let isQuantized = sqlite3_column_int(stmt, 2) == 1
+            let summary = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
+
+            let similarity: Float
+            if isQuantized {
+                let storedQuantized = embeddingService.dataToQuantized(vectorData)
+                similarity = embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized)
+            } else {
+                let storedVector = embeddingService.dataToVector(vectorData)
+                similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
+            }
+
+            if similarity > 0.15 {
+                matches.append((frameId, similarity, summary))
+            }
+        }
+
+        matches.sort { $0.similarity > $1.similarity }
+        let topMatches = Array(matches.prefix(30))
+        guard !topMatches.isEmpty else {
+            return TimelineSearchExecutionResult(results: [], errorMessage: nil)
+        }
+
+        let frameIds = topMatches.map { String($0.frameId) }.joined(separator: ",")
+        let metaSql = "SELECT id, time, window_title, url FROM FRAME WHERE id IN (\(frameIds))"
+
+        var metaStmt: OpaquePointer?
+        var frameMetadata: [Int: (time: String, app: String, url: String?)] = [:]
+
+        if sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
+            while sqlite3_step(metaStmt) == SQLITE_ROW {
+                let frameId = Int(sqlite3_column_int(metaStmt, 0))
+                let time = sqlite3_column_text(metaStmt, 1).map { String(cString: $0) } ?? ""
+                let app = sqlite3_column_text(metaStmt, 2).map { String(cString: $0) } ?? ""
+                let url = sqlite3_column_text(metaStmt, 3).map { String(cString: $0) }
+                frameMetadata[frameId] = (time, app, url)
+            }
+            sqlite3_finalize(metaStmt)
+        }
+
+        let results = topMatches.compactMap { match -> TimelineManager.SearchResult? in
+            guard let metadata = frameMetadata[match.frameId] else { return nil }
+            return TimelineManager.SearchResult(
+                frameId: match.frameId,
+                text: match.summary,
+                timestamp: metadata.time,
+                appName: metadata.app,
+                score: match.similarity,
+                url: metadata.url
+            )
+        }
+
+        return TimelineSearchExecutionResult(
+            results: deduplicate(results),
+            errorMessage: nil
+        )
+    }
+
+    private static func normalizedSearchTokens(for query: String) -> [String] {
+        normalizeForSearch(query)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+
+    private static func buildFTSPattern(from tokens: [String]) -> String {
+        tokens.map { "\($0)*" }.joined(separator: " ")
+    }
+
+    private static func buildFTSAnyTokenPattern(from tokens: [String]) -> String {
+        tokens.map { "\($0)*" }.joined(separator: " OR ")
+    }
+
+    private static func normalizeForSearch(_ value: String) -> String {
+        let folded = value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+
+        let normalizedScalars = folded.unicodeScalars.map { scalar in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
+        }
+
+        return String(normalizedScalars)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func matchesNormalizedOCRText(
+        _ text: String,
+        normalizedQuery: String,
+        tokens: [String]
+    ) -> Bool {
+        let normalizedText = normalizeForSearch(text)
+        guard !normalizedText.isEmpty else { return false }
+
+        if normalizedText.contains(normalizedQuery) {
+            return true
+        }
+
+        return containsOrderedTokens(tokens, in: normalizedText)
+    }
+
+    private static func containsOrderedTokens(_ tokens: [String], in text: String) -> Bool {
+        guard !tokens.isEmpty else { return false }
+
+        var searchStart = text.startIndex
+
+        for token in tokens {
+            guard let range = text.range(of: token, range: searchStart..<text.endIndex) else {
+                return false
+            }
+            searchStart = range.upperBound
+        }
+
+        return true
+    }
+
+    private static func searchSnippet(from text: String, query: String, tokens: [String]) -> String {
+        let collapsedText = text
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard collapsedText.count > 120 else {
+            return collapsedText
+        }
+
+        if let range = collapsedText.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) {
+            return snippet(in: collapsedText, around: range.lowerBound, window: 56)
+        }
+
+        for token in tokens {
+            if let range = collapsedText.range(of: token, options: [.caseInsensitive, .diacriticInsensitive]) {
+                return snippet(in: collapsedText, around: range.lowerBound, window: 56)
+            }
+        }
+
+        return String(collapsedText.prefix(120))
+    }
+
+    private static func snippet(in text: String, around index: String.Index, window: Int) -> String {
+        let start = text.index(index, offsetBy: -window, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(index, offsetBy: window, limitedBy: text.endIndex) ?? text.endIndex
+
+        var snippet = String(text[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if start > text.startIndex {
+            snippet = "..." + snippet
+        }
+        if end < text.endIndex {
+            snippet += "..."
+        }
+        return snippet
+    }
+
+    private static func deduplicate(
+        _ results: [TimelineManager.SearchResult]
+    ) -> [TimelineManager.SearchResult] {
+        var deduplicated: [TimelineManager.SearchResult] = []
+
+        for result in results {
+            if isNearDuplicate(result, comparedTo: deduplicated) {
+                continue
+            }
+            deduplicated.append(result)
+        }
+
+        return deduplicated
+    }
+
+    private static func isNearDuplicate(
+        _ candidate: TimelineManager.SearchResult,
+        comparedTo existingResults: [TimelineManager.SearchResult]
+    ) -> Bool {
+        let candidateSignature = duplicateSignature(for: candidate)
+        let candidateDate = TimelineTimestampParser.parse(candidate.timestamp)
+
+        for existing in existingResults.reversed() {
+            guard duplicateSignature(for: existing) == candidateSignature else { continue }
+
+            if abs(existing.frameId - candidate.frameId) <= duplicateFrameWindow {
+                return true
+            }
+
+            if let candidateDate,
+               let existingDate = TimelineTimestampParser.parse(existing.timestamp),
+               abs(candidateDate.timeIntervalSince(existingDate)) <= duplicateTimeWindow {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func duplicateSignature(for result: TimelineManager.SearchResult) -> String {
+        let primaryText: String
+        switch result.matchType {
+        case .url:
+            primaryText = result.url ?? result.text
+        case .ocr, .title, .clipboard:
+            primaryText = result.text
+        }
+
+        return [
+            normalizeForDuplicateCheck(matchTypeKey(result.matchType)),
+            normalizeForDuplicateCheck(result.appName),
+            normalizeForDuplicateCheck(primaryText)
+        ].joined(separator: "|")
+    }
+
+    private static func matchTypeKey(_ matchType: TimelineManager.SearchResult.MatchType) -> String {
+        switch matchType {
+        case .ocr:
+            return "ocr"
+        case .url:
+            return "url"
+        case .title:
+            return "title"
+        case .clipboard:
+            return "clipboard"
+        }
+    }
+
+    private static func normalizeForDuplicateCheck(_ value: String) -> String {
+        let folded = value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+
+        let collapsedWhitespace = folded.replacingOccurrences(
+            of: "\\s+",
+            with: " ",
+            options: .regularExpression
+        )
+
+        let trimmed = collapsedWhitespace.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(trimmed.prefix(160))
+    }
+}
+
 @MainActor
 class TimelineManager: ObservableObject {
     @Published var currentFrame: NSImage?
@@ -39,10 +788,25 @@ class TimelineManager: ObservableObject {
     private var videoFiles: [Int: URL] = [:]  // index -> URL
     private var videoIds: [Int] = []  // ordered list of video IDs (for frame_id lookup)
     private let framesPerVideo = 5 // FPS * SECONDS_PER_REC = 0.5 * 10
+    private var frameLookup = VideoFrameLookup(clips: [])
+    private var allFrameLookup = VideoFrameLookup(clips: [])
+    private var videoCatalog: [VideoCatalogEntry] = []
+    private var lastVideoCatalogRefreshAt = Date.distantPast
+    private let videoCatalogRefreshInterval: TimeInterval = 2
     private let textSearchLimit = 500
     private let metadataSearchLimit = 200
+    private let previewImageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 96
+        return cache
+    }()
+    private let frameImageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 12
+        return cache
+    }()
     
-    struct SearchResult: Identifiable {
+    struct SearchResult: Identifiable, Sendable {
         let id = UUID()
         let frameId: Int
         let text: String
@@ -52,12 +816,12 @@ class TimelineManager: ObservableObject {
         var url: String? = nil  // URL if from browser
         var matchType: MatchType = .ocr
         
-        enum MatchType {
+        enum MatchType: Sendable {
             case ocr, url, title, clipboard
         }
     }
 
-    struct RecentSearchSelection: Identifiable {
+    struct RecentSearchSelection: Identifiable, Sendable {
         let id = UUID()
         let frameId: Int
         let text: String
@@ -136,6 +900,9 @@ class TimelineManager: ObservableObject {
     private let expandHours: Int = 24       // Load 24h more when scrolling back
     @Published var isLoadingMore: Bool = false
     private var hasLoadedAllHistoryForSearch: Bool = false
+    private var pendingJumpTask: Task<Void, Never>?
+    private var frameLoadTask: Task<Void, Never>?
+    private var activeFrameLoadToken = UUID()
     
     // Generate a consistent color for a new app based on its name
     static func generateColorForApp(_ appName: String) -> Color {
@@ -199,42 +966,79 @@ class TimelineManager: ObservableObject {
 
         return defaultPath
     }
-    
+
+    private static func resolveCaptureInterval() -> TimeInterval {
+        if let captureDefaults = UserDefaults(suiteName: "com.memento.capture"),
+           let value = captureDefaults.object(forKey: "captureInterval") as? Double,
+           value > 0 {
+            return value
+        }
+
+        if let captureDomain = UserDefaults.standard.persistentDomain(forName: "com.memento.capture"),
+           let value = captureDomain["captureInterval"] as? Double,
+           value > 0 {
+            return value
+        }
+
+        if let value = UserDefaults.standard.object(forKey: "captureInterval") as? Double,
+           value > 0 {
+            return value
+        }
+
+        return 2.0
+    }
+
     private func loadVideoFiles(from startDate: Date? = nil, to endDate: Date? = nil) {
-        let fileManager = FileManager.default
-        guard let files = try? fileManager.contentsOfDirectory(atPath: cachePath) else { return }
-        
-        let mp4Files = files.filter { $0.hasSuffix(".mp4") }
-            .compactMap { filename -> (Int, URL, Date?)? in
-                let name = filename.replacingOccurrences(of: ".mp4", with: "")
-                guard let id = Int(name) else { return nil }
-                let url = URL(fileURLWithPath: cachePath).appendingPathComponent(filename)
-                
-                // Skip small/corrupted files (less than 10KB)
-                guard let attrs = try? fileManager.attributesOfItem(atPath: url.path),
-                      let size = attrs[.size] as? Int64,
-                      size >= 10000 else { return nil }
-                
-                // Get file modification date for filtering
-                let modDate = attrs[.modificationDate] as? Date
-                
-                // Filter by date range if specified
-                if let start = startDate, let mod = modDate, mod < start { return nil }
-                if let end = endDate, let mod = modDate, mod > end { return nil }
-                
-                return (id, url, modDate)
-            }
-            .sorted { $0.0 < $1.0 }
-        
+        refreshVideoCatalogIfNeeded()
+
+        guard !videoCatalog.isEmpty else {
+            videoIds = []
+            videoFiles = [:]
+            frameLookup = VideoFrameLookup(clips: [])
+            totalFrames = 0
+            return
+        }
+
         videoIds = []
         videoFiles = [:]
-        for (index, (id, url, _)) in mp4Files.enumerated() {
-            videoFiles[index] = url
-            videoIds.append(id)
+        var clips: [VideoClip] = []
+
+        for video in videoCatalog {
+            if let startDate, let modDate = video.modDate, modDate < startDate {
+                continue
+            }
+            if let endDate, let modDate = video.modDate, modDate > endDate {
+                continue
+            }
+
+            videoFiles[videoIds.count] = video.url
+            videoIds.append(video.clip.startFrameId)
+            clips.append(video.clip)
         }
-        
-        totalFrames = (videoFiles.count) * framesPerVideo
+
+        frameLookup = VideoFrameLookup(clips: clips)
+        totalFrames = frameLookup.totalFrames
         print("📹 Loaded \(videoFiles.count) videos (\(totalFrames) frames) for date range")
+    }
+
+    private func refreshVideoCatalogIfNeeded(force: Bool = false) {
+        applyVideoCatalogSnapshot(
+            VideoCatalogLoader.refreshIfNeeded(
+                cachePath: cachePath,
+                dbPath: dbPath,
+                framesPerVideo: framesPerVideo,
+                existingCatalog: videoCatalog,
+                lastRefreshAt: lastVideoCatalogRefreshAt,
+                refreshInterval: videoCatalogRefreshInterval,
+                force: force
+            )
+        )
+    }
+
+    private func applyVideoCatalogSnapshot(_ snapshot: VideoCatalogSnapshot) {
+        videoCatalog = snapshot.catalog
+        allFrameLookup = snapshot.lookup
+        lastVideoCatalogRefreshAt = snapshot.refreshedAt
     }
     
     /// Load older history when user navigates to start
@@ -282,25 +1086,12 @@ class TimelineManager: ObservableObject {
     
     // Get the database frame_id for a given display index
     func getFrameIdForIndex(_ index: Int) -> Int {
-        let videoIndex = index / framesPerVideo
-        guard videoIndex < videoIds.count else { return 0 }
-        let videoId = videoIds[videoIndex]
-        let frameInVideo = index % framesPerVideo
-        // Video filename is the starting frame_id, so add offset
-        return videoId + frameInVideo
+        frameLookup.frameId(forDisplayIndex: index) ?? 0
     }
     
     // Convert frame_id to display index (for search results)
     func getIndexForFrameId(_ frameId: Int) -> Int? {
-        // Find which video contains this frame_id
-        for (videoIndex, videoId) in videoIds.enumerated() {
-            let videoEndId = videoId + framesPerVideo
-            if frameId >= videoId && frameId < videoEndId {
-                let frameInVideo = frameId - videoId
-                return videoIndex * framesPerVideo + frameInVideo
-            }
-        }
-        return nil
+        frameLookup.displayIndex(forFrameId: frameId)
     }
     
     // Jump directly to a frame_id (from search)
@@ -321,9 +1112,19 @@ class TimelineManager: ObservableObject {
         log("📅 Frame \(frameId) not loaded yet, loading full history...")
         loadAllHistory()
 
-        Task { @MainActor in
-            while isLoadingMore {
-                try? await Task.sleep(nanoseconds: 50_000_000)
+        pendingJumpTask?.cancel()
+        pendingJumpTask = Task { @MainActor in
+            do {
+                while isLoadingMore {
+                    try Task.checkCancellation()
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+            } catch is CancellationError {
+                completion?(false)
+                return
+            } catch {
+                completion?(false)
+                return
             }
 
             if let index = getIndexForFrameId(frameId) {
@@ -333,30 +1134,36 @@ class TimelineManager: ObservableObject {
                 log("⚠️ Could not find display index for frame_id \(frameId) after loading full history")
                 completion?(false)
             }
+
+            pendingJumpTask = nil
         }
     }
     
     // Load timeline metadata from database - paginated for memory efficiency
     func loadTimelineMetadata() {
+        guard !videoIds.isEmpty else {
+            segmentCache.removeAll(keepingCapacity: true)
+            timelineSegments = []
+            groupedByDay = [:]
+            log("📅 Loaded 0 timeline segments, 0 days, cache: 0")
+            return
+        }
+
         var db: OpaquePointer?
         guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
         defer { sqlite3_close(db) }
         
         // Only load metadata for videos we actually have (not all historical frames)
         let videoIdsList = videoIds.map { String($0) }.joined(separator: ",")
-        let sql = videoIds.isEmpty 
-            ? "SELECT id, window_title, time FROM FRAME ORDER BY id"
-            : "SELECT id, window_title, time FROM FRAME WHERE id IN (\(videoIdsList)) ORDER BY id"
+        let sql = "SELECT id, window_title, time FROM FRAME WHERE id IN (\(videoIdsList)) ORDER BY id"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(statement) }
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        
+
         let dayFormatter = DateFormatter()
         dayFormatter.dateFormat = "yyyy-MM-dd"
         dayFormatter.locale = Locale(identifier: "sv_SE")
+        segmentCache.removeAll(keepingCapacity: true)
         
         // Use autoreleasepool to manage memory during bulk loading
         var segments: [TimelineSegment] = []
@@ -379,7 +1186,7 @@ class TimelineManager: ObservableObject {
                 if let timePtr = sqlite3_column_text(statement, 2) {
                     let rawTime = String(cString: timePtr).replacingOccurrences(of: "\"", with: "")
                     timeString = rawTime
-                    date = dateFormatter.date(from: rawTime)
+                    date = TimelineTimestampParser.parse(rawTime)
                 } else {
                     timeString = ""
                 }
@@ -400,10 +1207,10 @@ class TimelineManager: ObservableObject {
                 }
                 
                 // Find display index for this frame_id
-                if let displayIndex = videoIds.firstIndex(of: frameId) {
+                if let displayIndex = frameLookup.displayIndex(forFrameId: frameId) {
                     let segment = TimelineSegment(
                         id: frameId,
-                        displayIndex: displayIndex * framesPerVideo,
+                        displayIndex: displayIndex,
                         time: date,
                         timeString: timeString,
                         appName: appName,
@@ -465,111 +1272,184 @@ class TimelineManager: ObservableObject {
     }
     
     func getColorForCurrentFrame() -> Color {
-        return getSegmentForIndex(currentFrameIndex)?.color ?? Self.appColors["default"]!
+        return getSegmentForIndex(currentFrameIndex)?.color ?? Self.appColors["default"] ?? Color.gray
+    }
+
+    private func videoLocation(for index: Int) -> VideoFrameLocation? {
+        frameLookup.location(forDisplayIndex: index)
+    }
+
+    private func previewCacheKey(for location: VideoFrameLocation, maxDimension: CGFloat) -> NSString {
+        "\(location.clip.startFrameId):\(location.frameOffset):\(Int(maxDimension.rounded()))" as NSString
+    }
+
+    private func frameCacheKey(for frameId: Int) -> NSString {
+        "\(frameId)" as NSString
+    }
+
+    private static func targetTime(
+        for location: VideoFrameLocation,
+        totalSeconds: Double,
+        fallbackFrameDuration: TimeInterval
+    ) -> CMTime {
+        let framePositionDenominator = max(1, location.clip.frameCount - 1)
+        let proportionalSeconds = totalSeconds > 0
+            ? (Double(location.frameOffset) / Double(framePositionDenominator)) * totalSeconds
+            : Double(location.frameOffset) * fallbackFrameDuration
+        let clampedSeconds = totalSeconds > 0
+            ? min(max(0, proportionalSeconds), totalSeconds)
+            : max(0, proportionalSeconds)
+        return CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+    }
+
+    private static func renderFrameImage(
+        from videoURL: URL,
+        location: VideoFrameLocation,
+        maxDimension: CGFloat?,
+        tolerance: CMTime,
+        fallbackFrameDuration: TimeInterval
+    ) async throws -> NSImage {
+        let asset = AVAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+        generator.maximumSize = maxDimension.map { CGSize(width: $0, height: $0) } ?? .zero
+        generator.apertureMode = .cleanAperture
+
+        let duration = try? await asset.load(.duration)
+        let totalSeconds = max(0, duration?.seconds ?? 0)
+        let targetTime = targetTime(
+            for: location,
+            totalSeconds: totalSeconds,
+            fallbackFrameDuration: fallbackFrameDuration
+        )
+        let (cgImage, _) = try await generator.image(at: targetTime)
+        return NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: cgImage.width, height: cgImage.height)
+        )
     }
     
     func getSegmentForIndex(_ index: Int) -> TimelineSegment? {
-        let videoIndex = index / framesPerVideo
-        guard videoIndex < videoIds.count else { return nil }
-        let frameId = videoIds[videoIndex]
-        return timelineSegments.first(where: { $0.id == frameId })
+        guard let location = videoLocation(for: index) else { return nil }
+        let frameId = location.clip.startFrameId
+        return segmentCache[frameId] ?? timelineSegments.first(where: { $0.id == frameId })
     }
 
     func loadPreviewFrame(at index: Int, maxDimension: CGFloat = 420) async -> NSImage? {
         guard index >= 0 && index < totalFrames else { return nil }
 
-        let videoIndex = index / framesPerVideo
-        let frameInVideo = index % framesPerVideo
-        guard let videoURL = videoFiles[videoIndex] else { return nil }
-        let localFramesPerVideo = framesPerVideo
+        guard let location = videoLocation(for: index),
+              let videoURL = videoFiles[location.clipIndex] else { return nil }
+        let previewKey = previewCacheKey(for: location, maxDimension: maxDimension)
+        if let cached = previewImageCache.object(forKey: previewKey) {
+            return cached
+        }
+        let fallbackFrameDuration = Self.resolveCaptureInterval()
 
-        return await Task.detached(priority: .utility) {
-            let asset = AVAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.08, preferredTimescale: 600)
-            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.08, preferredTimescale: 600)
-            generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
-            generator.apertureMode = .cleanAperture
-
-            let duration = try? await asset.load(.duration)
-            let totalSeconds = max(0, duration?.seconds ?? 0)
-            let framePositionDenominator = max(1, localFramesPerVideo - 1)
-            let proportionalSeconds = totalSeconds > 0
-                ? (Double(frameInVideo) / Double(framePositionDenominator)) * totalSeconds
-                : Double(frameInVideo) * 2.0
-            let clampedSeconds = totalSeconds > 0
-                ? min(max(0, proportionalSeconds), totalSeconds)
-                : max(0, proportionalSeconds)
-            let targetTime = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
-
+        let imageTask = Task.detached(priority: .utility) { () -> NSImage? in
             do {
-                let (cgImage, _) = try await generator.image(at: targetTime)
-                return NSImage(
-                    cgImage: cgImage,
-                    size: NSSize(width: cgImage.width, height: cgImage.height)
+                return try await Self.renderFrameImage(
+                    from: videoURL,
+                    location: location,
+                    maxDimension: maxDimension,
+                    tolerance: CMTime(seconds: 0.08, preferredTimescale: 600),
+                    fallbackFrameDuration: fallbackFrameDuration
                 )
             } catch {
                 return nil
             }
-        }.value
+        }
+        let image = await imageTask.value
+
+        if let image {
+            previewImageCache.setObject(image, forKey: previewKey)
+        }
+
+        return image
     }
     
     func loadFrame(at index: Int) {
         guard index >= 0 && index < totalFrames else { return }
-        
-        let videoIndex = index / framesPerVideo
-        let frameInVideo = index % framesPerVideo
-        
-        guard let videoURL = videoFiles[videoIndex] else {
-            // Don't set placeholder - let loading view show
+
+        activeFrameLoadToken = UUID()
+        let token = activeFrameLoadToken
+        frameLoadTask?.cancel()
+
+        guard let location = videoLocation(for: index) else {
             return
         }
-        
-        Task {
+        let initialFrameId = location.clip.startFrameId + location.frameOffset
+        let initialFrameKey = frameCacheKey(for: initialFrameId)
+        if let cached = frameImageCache.object(forKey: initialFrameKey) {
+            currentFrame = cached
+            loadMetadata(for: index)
+            return
+        }
+        let fallbackFrameDuration = Self.resolveCaptureInterval()
+
+        frameLoadTask = Task { [weak self] in
+            guard let self else { return }
+
             isLoading = true
-            defer { isLoading = false }
-            
-            let asset = AVAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.requestedTimeToleranceBefore = .zero
-            generator.requestedTimeToleranceAfter = .zero
-            generator.maximumSize = .zero  // Full resolution, no scaling
-            generator.apertureMode = .cleanAperture
-            
-            // Calculate time for the specific frame
-            let duration = try? await asset.load(.duration)
-            let totalSeconds = max(0, duration?.seconds ?? 0)
-            let framePositionDenominator = max(1, framesPerVideo - 1)
-            let proportionalSeconds = totalSeconds > 0
-                ? (Double(frameInVideo) / Double(framePositionDenominator)) * totalSeconds
-                : Double(frameInVideo) * 2.0
-            let clampedSeconds = totalSeconds > 0
-                ? min(max(0, proportionalSeconds), totalSeconds)
-                : max(0, proportionalSeconds)
-            let targetTime = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
-            
-            do {
-                let (cgImage, _) = try await generator.image(at: targetTime)
-                await MainActor.run {
-                    self.currentFrame = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                }
-            } catch {
-                // Silently skip corrupted files and try next frame
-                print("⚠️ Skipping corrupted video \(videoIndex)")
-                await MainActor.run {
-                    // Try to load next valid frame
-                    if index < totalFrames - 1 {
-                        self.currentFrameIndex = index + 1
-                        self.loadFrame(at: self.currentFrameIndex)
-                    }
-                    // Don't set placeholder - let loading view show
+            defer {
+                if activeFrameLoadToken == token {
+                    isLoading = false
                 }
             }
-            
-            // Load metadata
-            loadMetadata(for: index)
+
+            var candidateIndex = index
+
+            while candidateIndex < totalFrames {
+                if Task.isCancelled || activeFrameLoadToken != token {
+                    return
+                }
+
+                guard let candidateLocation = videoLocation(for: candidateIndex),
+                      let videoURL = videoFiles[candidateLocation.clipIndex] else {
+                    candidateIndex += 1
+                    continue
+                }
+
+                let frameId = candidateLocation.clip.startFrameId + candidateLocation.frameOffset
+                let frameKey = frameCacheKey(for: frameId)
+
+                if let cached = frameImageCache.object(forKey: frameKey) {
+                    if activeFrameLoadToken != token {
+                        return
+                    }
+                    currentFrameIndex = candidateIndex
+                    currentFrame = cached
+                    loadMetadata(for: candidateIndex)
+                    return
+                }
+
+                do {
+                    let image = try await Self.renderFrameImage(
+                        from: videoURL,
+                        location: candidateLocation,
+                        maxDimension: nil,
+                        tolerance: .zero,
+                        fallbackFrameDuration: fallbackFrameDuration
+                    )
+
+                    if Task.isCancelled || activeFrameLoadToken != token {
+                        return
+                    }
+
+                    frameImageCache.setObject(image, forKey: frameKey)
+                    currentFrameIndex = candidateIndex
+                    currentFrame = image
+                    loadMetadata(for: candidateIndex)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    print("⚠️ Skipping corrupted video \(candidateLocation.clipIndex): \(error.localizedDescription)")
+                    candidateIndex += 1
+                }
+            }
         }
     }
     
@@ -582,9 +1462,8 @@ class TimelineManager: ObservableObject {
         }
         
         // Fallback: Try to load from JSON metadata files
-        let videoIndex = frameIndex / framesPerVideo
-        guard videoIndex < videoIds.count else { return }
-        let videoId = videoIds[videoIndex]
+        guard let location = videoLocation(for: frameIndex) else { return }
+        let videoId = location.clip.startFrameId
         
         let jsonPath = URL(fileURLWithPath: cachePath).appendingPathComponent("\(videoId).json")
         if let data = try? Data(contentsOf: jsonPath),
@@ -769,21 +1648,7 @@ class TimelineManager: ObservableObject {
     
     private func log(_ message: String) {
         print(message)
-        // Also write to log file for debugging
-        let logPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/memento/swift_timeline.log")
-        let logMessage = "\(Date()): \(message)\n"
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logPath.path) {
-                if let handle = try? FileHandle(forWritingTo: logPath) {
-                    handle.seekToEndOfFile()
-                    handle.write(data)
-                    handle.closeFile()
-                }
-            } else {
-                try? data.write(to: logPath)
-            }
-        }
+        TimelineLogWriter.shared.append(message)
     }
     
     private var searchTask: Task<Void, Never>?
@@ -806,142 +1671,42 @@ class TimelineManager: ObservableObject {
 
         isSearchRunning = true
         searchErrorMessage = nil
-        
-        // Run search on background thread
-        searchTask = Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self = self else { return }
-            let results = await self.performSearch(query)
-            
-            await MainActor.run {
-                guard self.latestSearchToken == token else { return }
-                self.searchResults = results
-                self.isSearchRunning = false
-            }
-        }
-    }
-    
-    private func performSearch(_ query: String) async -> [SearchResult] {
-        await ensureAllHistoryLoadedForSearch()
 
-        let dbPath = self.dbPath
-        
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            searchErrorMessage = L.searchDatabaseError
-            return []
+        searchTask = Task { [weak self] in
+            guard let self = self else { return }
+            self.isPreparingSearchHistory = true
+            let cachePath = self.cachePath
+            let dbPath = self.dbPath
+            let framesPerVideo = self.framesPerVideo
+            let existingCatalog = self.videoCatalog
+            let lastRefreshAt = self.lastVideoCatalogRefreshAt
+            let refreshInterval = self.videoCatalogRefreshInterval
+            let snapshot = await Task.detached(priority: .utility) {
+                VideoCatalogLoader.refreshIfNeeded(
+                    cachePath: cachePath,
+                    dbPath: dbPath,
+                    framesPerVideo: framesPerVideo,
+                    existingCatalog: existingCatalog,
+                    lastRefreshAt: lastRefreshAt,
+                    refreshInterval: refreshInterval
+                )
+            }.value
+            self.applyVideoCatalogSnapshot(snapshot)
+            self.isPreparingSearchHistory = false
+            guard !Task.isCancelled else { return }
+
+            let request = self.makeSearchRequest(for: query)
+            let result = await self.performDetachedSearch(request: request, semantic: false)
+            guard !Task.isCancelled, self.latestSearchToken == token else { return }
+
+            self.searchErrorMessage = result.errorMessage
+            self.searchResults = result.results
+            self.isSearchRunning = false
         }
-        defer { sqlite3_close(db) }
-        
-        var results: [SearchResult] = []
-        let lowerQuery = query.lowercased()
-        let likePattern = "%\(query)%"  // For metadata search
-        
-        // Use FTS5 for fast full-text search across all history.
-        // Tokenized prefix query gives broader matches than strict phrase-prefix.
-        let ftsPattern = buildFTSPattern(for: query)
-        
-        let ftsSql = """
-            SELECT fts.frame_id, fts.text, f.time, f.window_title, f.url, bm25(CONTENT_FTS) AS rank
-            FROM CONTENT_FTS fts
-            JOIN FRAME f ON CAST(fts.frame_id AS INTEGER) = f.id
-            WHERE CONTENT_FTS MATCH ?
-            ORDER BY rank ASC
-            LIMIT \(textSearchLimit)
-        """
-        
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, ftsSql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, ftsPattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-            
-            var seenFrames = Set<Int>()
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let frameId = Int(sqlite3_column_int(stmt, 0))
-                guard !seenFrames.contains(frameId) else { continue }
-                guard frameHasVideo(frameId) else { continue }
-                seenFrames.insert(frameId)
-                
-                let text = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
-                let timestamp = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
-                let appName = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
-                let url = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
-                
-                results.append(SearchResult(
-                    frameId: frameId,
-                    text: String(text.prefix(100)),
-                    timestamp: timestamp,
-                    appName: appName,
-                    url: url,
-                    matchType: .ocr
-                ))
-            }
-            sqlite3_finalize(stmt)
-        }
-        
-        // Search metadata (URL, title, clipboard) - single query
-        let metaSql = """
-            SELECT id, url, tab_title, clipboard, window_title, time
-            FROM FRAME 
-            WHERE url LIKE ? COLLATE NOCASE
-               OR tab_title LIKE ? COLLATE NOCASE
-               OR clipboard LIKE ? COLLATE NOCASE
-            ORDER BY id DESC
-            LIMIT \(metadataSearchLimit)
-        """
-        
-        if sqlite3_prepare_v2(db, metaSql, -1, &stmt, nil) == SQLITE_OK {
-            for i in 1...3 {
-                sqlite3_bind_text(stmt, Int32(i), likePattern, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-            }
-            
-            let existingFrameIds = Set(results.map { $0.frameId })
-            
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let frameId = Int(sqlite3_column_int(stmt, 0))
-                guard !existingFrameIds.contains(frameId) else { continue }
-                guard frameHasVideo(frameId) else { continue }
-                
-                let url = sqlite3_column_text(stmt, 1).map { String(cString: $0) }
-                let tabTitle = sqlite3_column_text(stmt, 2).map { String(cString: $0) }
-                let clipboard = sqlite3_column_text(stmt, 3).map { String(cString: $0) }
-                let windowTitle = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? ""
-                let timestamp = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? ""
-                
-                // Determine match type and text
-                let matchType: SearchResult.MatchType
-                let displayText: String
-                
-                if let u = url, u.lowercased().contains(lowerQuery) {
-                    matchType = .url
-                    displayText = u
-                } else if let t = tabTitle, t.lowercased().contains(lowerQuery) {
-                    matchType = .title
-                    displayText = t
-                } else if let c = clipboard, c.lowercased().contains(lowerQuery) {
-                    matchType = .clipboard
-                    displayText = String(c.prefix(100))
-                } else {
-                    continue
-                }
-                
-                results.append(SearchResult(
-                    frameId: frameId,
-                    text: displayText,
-                    timestamp: timestamp,
-                    appName: windowTitle,
-                    url: url,
-                    matchType: matchType
-                ))
-            }
-            sqlite3_finalize(stmt)
-        }
-        
-        return results
     }
     
     // MARK: - Semantic Search
-    
-    private let embeddingService = EmbeddingService()
-    
+
     private var semanticSearchTask: Task<Void, Never>?
 
     func semanticSearch(_ query: String) {
@@ -960,150 +1725,68 @@ class TimelineManager: ObservableObject {
 
         isSearchRunning = true
         searchErrorMessage = nil
-        
-        semanticSearchTask = Task.detached(priority: .userInitiated) { [weak self] in
+
+        semanticSearchTask = Task { [weak self] in
             guard let self = self else { return }
-            let results = await self.performSemanticSearch(query)
-            
-            await MainActor.run {
-                guard self.latestSearchToken == token else { return }
-                self.searchResults = results
-                self.isSearchRunning = false
-            }
+            self.isPreparingSearchHistory = true
+            let cachePath = self.cachePath
+            let dbPath = self.dbPath
+            let framesPerVideo = self.framesPerVideo
+            let existingCatalog = self.videoCatalog
+            let lastRefreshAt = self.lastVideoCatalogRefreshAt
+            let refreshInterval = self.videoCatalogRefreshInterval
+            let snapshot = await Task.detached(priority: .utility) {
+                VideoCatalogLoader.refreshIfNeeded(
+                    cachePath: cachePath,
+                    dbPath: dbPath,
+                    framesPerVideo: framesPerVideo,
+                    existingCatalog: existingCatalog,
+                    lastRefreshAt: lastRefreshAt,
+                    refreshInterval: refreshInterval
+                )
+            }.value
+            self.applyVideoCatalogSnapshot(snapshot)
+            self.isPreparingSearchHistory = false
+            guard !Task.isCancelled else { return }
+
+            let request = self.makeSearchRequest(for: query)
+            let result = await self.performDetachedSearch(request: request, semantic: true)
+            guard !Task.isCancelled, self.latestSearchToken == token else { return }
+
+            self.searchErrorMessage = result.errorMessage
+            self.searchResults = result.results
+            self.isSearchRunning = false
         }
     }
-    
-    private func performSemanticSearch(_ query: String) async -> [SearchResult] {
-        await ensureAllHistoryLoadedForSearch()
 
-        // Generate query embedding
-        guard let queryVector = embeddingService.embed(query) else {
-            // Fallback to text search
-            return await performSearch(query)
-        }
-        let queryQuantized = embeddingService.quantize(queryVector)
-        
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            searchErrorMessage = L.searchDatabaseError
-            return []
-        }
-        defer { sqlite3_close(db) }
-        
-        // Search all available embeddings to avoid recency bias.
-        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        
-        var matches: [(frameId: Int, similarity: Float, summary: String)] = []
-        
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let frameId = Int(sqlite3_column_int(stmt, 0))
-            guard frameHasVideo(frameId) else { continue }
-            
-            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
-            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
-            let vectorData = Data(bytes: blobPtr, count: blobSize)
-            let isQuantized = sqlite3_column_int(stmt, 2) == 1
-            
-            let summary: String
-            if let textPtr = sqlite3_column_text(stmt, 3) {
-                summary = String(cString: textPtr)
-            } else {
-                summary = ""
-            }
-            
-            let similarity: Float
-            if isQuantized {
-                let storedQuantized = embeddingService.dataToQuantized(vectorData)
-                similarity = embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized)
-            } else {
-                let storedVector = embeddingService.dataToVector(vectorData)
-                similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
-            }
-            
-            if similarity > 0.15 {  // Lower threshold for better recall
-                matches.append((frameId, similarity, summary))
-            }
-        }
-        
-        // Sort by similarity
-        matches.sort { $0.similarity > $1.similarity }
-        
-        // Get frame metadata for top matches - batch query
-        let topMatches = Array(matches.prefix(30))
-        guard !topMatches.isEmpty else { return [] }
-        
-        let frameIds = topMatches.map { String($0.frameId) }.joined(separator: ",")
-        let metaSql = "SELECT id, time, window_title, url FROM FRAME WHERE id IN (\(frameIds))"
-        
-        var metaStmt: OpaquePointer?
-        var frameMetadata: [Int: (time: String, app: String, url: String?)] = [:]
-        
-        if sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
-            while sqlite3_step(metaStmt) == SQLITE_ROW {
-                let fid = Int(sqlite3_column_int(metaStmt, 0))
-                let time = sqlite3_column_text(metaStmt, 1).map { String(cString: $0) } ?? ""
-                let app = sqlite3_column_text(metaStmt, 2).map { String(cString: $0) } ?? ""
-                let url = sqlite3_column_text(metaStmt, 3).map { String(cString: $0) }
-                frameMetadata[fid] = (time, app, url)
-            }
-            sqlite3_finalize(metaStmt)
-        }
-        
-        var results: [SearchResult] = []
-        for match in topMatches {
-            if let meta = frameMetadata[match.frameId] {
-                results.append(SearchResult(
-                    frameId: match.frameId,
-                    text: match.summary,
-                    timestamp: meta.time,
-                    appName: meta.app,
-                    score: match.similarity,
-                    url: meta.url
-                ))
-            }
-        }
-        
-        return results
+    private func makeSearchRequest(for query: String) -> TimelineSearchRequest {
+        TimelineSearchRequest(
+            dbPath: dbPath,
+            query: query,
+            lookup: allFrameLookup,
+            textSearchLimit: textSearchLimit,
+            metadataSearchLimit: metadataSearchLimit
+        )
     }
 
-    private func ensureAllHistoryLoadedForSearch() async {
-        isPreparingSearchHistory = true
-        defer { isPreparingSearchHistory = false }
-
-        if hasLoadedAllHistoryForSearch || loadedFromDate == Date.distantPast {
-            hasLoadedAllHistoryForSearch = true
-            return
+    private func performDetachedSearch(
+        request: TimelineSearchRequest,
+        semantic: Bool
+    ) async -> TimelineSearchExecutionResult {
+        let worker = Task.detached(priority: .userInitiated) {
+            semantic
+                ? TimelineSearchWorker.performSemanticSearch(request)
+                : TimelineSearchWorker.performTextSearch(request)
         }
 
-        if !isLoadingMore {
-            loadAllHistory()
+        return await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
         }
-
-        while isLoadingMore {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-
-        hasLoadedAllHistoryForSearch = loadedFromDate == Date.distantPast
     }
 
     private func frameHasVideo(_ frameId: Int) -> Bool {
-        getIndexForFrameId(frameId) != nil
-    }
-
-    private func buildFTSPattern(for query: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        let sanitizedScalars = query.unicodeScalars.map { scalar in
-            allowed.contains(scalar) ? Character(scalar) : " "
-        }
-        let sanitized = String(sanitizedScalars)
-        let tokens = sanitized.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-
-        if tokens.isEmpty {
-            return query.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "*", with: "")
-        }
-        return tokens.map { "\($0)*" }.joined(separator: " ")
+        frameLookup.displayIndex(forFrameId: frameId) != nil
     }
 }

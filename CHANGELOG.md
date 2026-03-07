@@ -2,6 +2,24 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.2] - 2026-03-07
+
+### Fixed
+- Timeline now parses stored ISO 8601 timestamps correctly, restoring proper day grouping and history metadata
+- Search now finds OCR phrases split across multiple text blocks and handles hyphenated terms like `Dev-1` more reliably
+- Search result deduplication collapses repeated OCR hits from the same nearby capture window
+- Video clip rollover and local frame timestamps now stay aligned between Capture and Timeline
+- Storage migration now compares file contents safely instead of trusting file size matches
+- Capture database writes now rollback cleanly on failure instead of committing partial OCR rows
+- Video encoder finalize path no longer blocks the main actor and surfaces append/finalize failures explicitly
+- Capture interval changes now apply live to both the timer and video encoder without restarting the app
+
+### Improved
+- Timeline search preparation and video catalog refresh now run off the main actor
+- Timeline frame loading uses a single controlled task path and background log writer to reduce UI stalls
+- Timeline frame fallback timing now respects the current capture interval instead of assuming `2.0s`
+- Storage migration now runs asynchronously from Settings with progress feedback
+
 ## [2.0.1] - 2026-02-09
 
 ### Fixed

@@ -293,7 +293,9 @@ class MenuBarManager {
         if shouldRun {
             captureService?.start()
         } else {
-            captureService?.stop()
+            Task { @MainActor in
+                await captureService?.stop()
+            }
         }
         isCaptureServiceRunning = shouldRun
         updateControlCenter()

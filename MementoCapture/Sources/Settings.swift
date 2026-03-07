@@ -136,12 +136,12 @@ class Settings: ObservableObject {
         excludedApps.removeAll { $0 == app }
     }
 
-    func updateStoragePath(_ newPath: String) throws -> StorageMigrator.Result {
+    func updateStoragePath(_ newPath: String) async throws -> StorageMigrator.Result {
         let normalized = URL(fileURLWithPath: newPath).standardizedFileURL.path
         guard !normalized.isEmpty else { return StorageMigrator.Result() }
         guard normalized != storagePath else { return StorageMigrator.Result() }
 
-        let result = try CaptureService.shared.switchStoragePath(to: URL(fileURLWithPath: normalized))
+        let result = try await CaptureService.shared.switchStoragePath(to: URL(fileURLWithPath: normalized))
         storagePath = normalized
         return result
     }
