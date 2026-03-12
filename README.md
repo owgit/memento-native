@@ -20,6 +20,7 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 - Smarter capture auto-pause (idle + video/streaming + private/incognito browsing)
 - Improved multilingual semantic search and URL/title ranking for browser history
 - Browser URL/title capture now requests the correct macOS Automation permission when needed
+- Automatic monthly update checks with menu + notification indicators when a new release is available
 
 ## Use Cases
 

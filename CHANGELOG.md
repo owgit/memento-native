@@ -8,6 +8,7 @@ All notable changes to Memento Native will be documented in this file.
 - Semantic search now selects on-device embedding models per language instead of assuming a single language path
 - Capture builds cleaner semantic summaries from app name, URL, title, clipboard, and deduplicated OCR instead of a single noisy text blob
 - Timeline search ranks URL, title, clipboard, OCR, and semantic matches more consistently in hybrid results
+- Automatic update checks now run monthly while still surfacing menu indicators and macOS notifications when a new version is found
 
 ### Fixed
 - Browser URL/title capture now declares Apple Events usage correctly so recent browser history can be indexed again

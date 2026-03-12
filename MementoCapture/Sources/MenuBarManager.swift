@@ -24,10 +24,11 @@ class MenuBarManager {
     private let updateMenuTag = 103
     private let permissionCheckInterval: TimeInterval = 5
     private let statusRefreshInterval: TimeInterval = 1
-    private let updateCheckInterval: TimeInterval = 6 * 60 * 60
+    private let automaticUpdateCheckInterval: TimeInterval = 30 * 24 * 60 * 60
     private let updateAPIURL = URL(string: "https://api.github.com/repos/owgit/memento-native/releases/latest")!
     private let fallbackReleaseURL = URL(string: "https://github.com/owgit/memento-native/releases/latest")!
     private let lastNotifiedUpdateVersionKey = "lastNotifiedUpdateVersion"
+    private let lastAutomaticUpdateCheckAtKey = "lastAutomaticUpdateCheckAt"
     
     init() {}
     
@@ -236,12 +237,36 @@ class MenuBarManager {
 
     private func startUpdateChecks() {
         refreshUpdateMenuItem()
-        checkForUpdates(silent: true)
+        triggerAutomaticUpdateCheckIfNeeded()
+        scheduleNextAutomaticUpdateCheck()
+    }
 
+    private func triggerAutomaticUpdateCheckIfNeeded() {
+        let defaults = UserDefaults.standard
+        let now = Date()
+
+        if let lastCheckAt = defaults.object(forKey: lastAutomaticUpdateCheckAtKey) as? Date,
+           now.timeIntervalSince(lastCheckAt) < automaticUpdateCheckInterval {
+            return
+        }
+
+        defaults.set(now, forKey: lastAutomaticUpdateCheckAtKey)
+        checkForUpdates(silent: true)
+    }
+
+    private func scheduleNextAutomaticUpdateCheck() {
         updateTimer?.invalidate()
-        updateTimer = Timer.scheduledTimer(withTimeInterval: updateCheckInterval, repeats: true) { [weak self] _ in
+
+        let defaults = UserDefaults.standard
+        let now = Date()
+        let lastCheckAt = defaults.object(forKey: lastAutomaticUpdateCheckAtKey) as? Date
+        let elapsed = lastCheckAt.map { now.timeIntervalSince($0) } ?? automaticUpdateCheckInterval
+        let delay = max(60, automaticUpdateCheckInterval - elapsed)
+
+        updateTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.checkForUpdates(silent: true)
+                self?.triggerAutomaticUpdateCheckIfNeeded()
+                self?.scheduleNextAutomaticUpdateCheck()
             }
         }
         if let updateTimer {
