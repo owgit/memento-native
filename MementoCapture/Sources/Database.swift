@@ -88,9 +88,13 @@ class Database {
                 vector BLOB NOT NULL,
                 quantized INTEGER DEFAULT 1,
                 text_summary TEXT,
+                language TEXT,
+                revision INTEGER DEFAULT 0,
                 FOREIGN KEY (frame_id) REFERENCES FRAME(id)
             )
         """)
+        execute("ALTER TABLE EMBEDDING ADD COLUMN language TEXT")
+        execute("ALTER TABLE EMBEDDING ADD COLUMN revision INTEGER DEFAULT 0")
         
         // Indexes
         execute("CREATE INDEX IF NOT EXISTS idx_content_frame_id ON CONTENT(frame_id)")
@@ -124,7 +128,7 @@ class Database {
             statement: &insertContentStatement
         )
         prepareStatement(
-            "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, quantized, text_summary) VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO EMBEDDING (frame_id, vector, quantized, text_summary, language, revision) VALUES (?, ?, ?, ?, ?, ?)",
             statement: &insertEmbeddingStatement
         )
     }
@@ -279,7 +283,14 @@ class Database {
     
     // MARK: - Embedding Storage (Quantized Int8)
     
-    func insertEmbedding(frameId: Int, vector: Data, textSummary: String, quantized: Bool = true) -> Bool {
+    func insertEmbedding(
+        frameId: Int,
+        vector: Data,
+        textSummary: String,
+        quantized: Bool = true,
+        language: String? = nil,
+        revision: Int = 0
+    ) -> Bool {
         guard let stmt = insertEmbeddingStatement else {
             logSQLiteError("embedding insert statement unavailable")
             return false
@@ -292,6 +303,12 @@ class Database {
         }
         sqlite3_bind_int(stmt, 3, quantized ? 1 : 0)
         sqlite3_bind_text(stmt, 4, textSummary, -1, SQLITE_TRANSIENT)
+        if let language, !language.isEmpty {
+            sqlite3_bind_text(stmt, 5, language, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(stmt, 5)
+        }
+        sqlite3_bind_int(stmt, 6, Int32(revision))
         return step(stmt, context: "insert embedding for frame \(frameId)")
     }
     

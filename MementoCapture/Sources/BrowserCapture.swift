@@ -4,6 +4,7 @@ import AppKit
 /// Captures URL and tab title from browsers using AppleScript
 class BrowserCapture {
     private static let delimiter = "|||"
+    private static var lastAppleScriptErrorSignature: String?
     private static let privateKeywords = [
         "incognito",
         "inprivate",
@@ -133,7 +134,15 @@ class BrowserCapture {
         var error: NSDictionary?
         guard let script = NSAppleScript(source: source) else { return nil }
         let result = script.executeAndReturnError(&error)
-        if error != nil { return nil }
+        if let error {
+            let signature = error.description
+            if lastAppleScriptErrorSignature != signature {
+                print("⚠️ Browser AppleScript failed: \(signature)")
+                lastAppleScriptErrorSignature = signature
+            }
+            return nil
+        }
+        lastAppleScriptErrorSignature = nil
         return result.stringValue
     }
 
@@ -175,4 +184,3 @@ class BrowserCapture {
         return privateURLMarkers.contains { url.contains($0) }
     }
 }
-

@@ -397,7 +397,7 @@ struct ContentView: View {
                             NSApplication.shared.keyWindow?.makeKey()
                             openCommandPalette()
                         }) {
-                            Image(systemName: "command")
+                            Image(systemName: "magnifyingglass")
                                 .font(.system(size: 13, weight: .semibold))
                         }
                         .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.isCommandPaletteOpen))
@@ -1049,7 +1049,7 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Image(systemName: "command")
+                    Image(systemName: "magnifyingglass")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.white.opacity(0.75))
 

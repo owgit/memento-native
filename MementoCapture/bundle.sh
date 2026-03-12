@@ -3,6 +3,7 @@
 
 set -e
 
+RELEASE_VERSION="${MEMENTO_VERSION:-2.0.3}"
 APP_NAME="Memento Capture"
 BUNDLE_ID="com.memento.capture"
 APP_DIR="/Applications/${APP_NAME}.app"
@@ -45,6 +46,17 @@ sign_app() {
         --sign "$SIGN_IDENTITY" "$APP_DIR"
 }
 
+ensure_apple_events_usage_description() {
+    local plist="$APP_DIR/Contents/Info.plist"
+    local message="Memento needs Automation access to read the active browser tab URL and title for search history."
+
+    if /usr/libexec/PlistBuddy -c "Print :NSAppleEventsUsageDescription" "$plist" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c "Set :NSAppleEventsUsageDescription $message" "$plist"
+    else
+        /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string $message" "$plist"
+    fi
+}
+
 echo "🔨 Building release..."
 swift build -c release
 
@@ -60,6 +72,8 @@ if [ -f "$BINARY_PATH" ]; then
     # Update Info.plist with new build number
     BUILD_NUMBER=$(date +%Y%m%d%H%M)
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$APP_DIR/Contents/Info.plist"
+    ensure_apple_events_usage_description
     
     # Re-sign after binary update
     sign_app
@@ -99,7 +113,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <key>CFBundleVersion</key>
     <string>${BUILD_NUMBER}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${RELEASE_VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -112,6 +126,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Memento needs screen recording to capture and search your screen history.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Memento needs Automation access to read the active browser tab URL and title for search history.</string>
 </dict>
 </plist>
 EOF

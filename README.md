@@ -11,14 +11,15 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 
 > Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
 
-## Latest (v2.0.0)
+## Latest (v2.0.3)
 
 - Unified **Setup Hub** for first-run, permission fixes, and update recovery
 - **Action Hub / Command Palette** (`⌘F`) for search + quick actions
 - Direct search panel moved to `⌘K`
 - Menubar **Control Center** chips (recording state, permission state, last capture)
 - Smarter capture auto-pause (idle + video/streaming + private/incognito browsing)
-- Improved search result reliability for older history and clearer loading states
+- Improved multilingual semantic search and URL/title ranking for browser history
+- Browser URL/title capture now requests the correct macOS Automation permission when needed
 
 ## Use Cases
 
@@ -56,7 +57,7 @@ Download the latest DMG from [Releases](https://github.com/owgit/memento-native/
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
-./build-dmg.sh 2.0.0  # Creates dist/Memento-Native-2.0.0.dmg
+./build-dmg.sh 2.0.3  # Creates dist/Memento-Native-2.0.3.dmg
 # Or build individually:
 cd MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh
@@ -79,7 +80,8 @@ Quick summary:
 1. Open `/Applications/Memento Capture.app`
 2. Follow **Setup Hub** prompts (recommended)
 3. If needed, use **Fix/Repair Permissions** in Setup Hub
-4. Manual fallback: **System Settings** → **Privacy & Security** → **Screen Recording** and enable `Memento Capture`
+4. Allow **Automation** access for `Memento Capture` if macOS asks to control Safari/Chrome/Arc/Edge/Brave/Firefox for URL capture
+5. Manual fallback: **System Settings** → **Privacy & Security** → **Screen Recording** and enable `Memento Capture`
 
 You can re-open Setup Hub anytime from the menu bar app.
 

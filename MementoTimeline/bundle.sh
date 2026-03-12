@@ -3,6 +3,7 @@
 
 set -e
 
+RELEASE_VERSION="${MEMENTO_VERSION:-2.0.3}"
 APP_NAME="Memento Timeline"
 BUNDLE_ID="com.memento.timeline"
 APP_DIR="/Applications/${APP_NAME}.app"
@@ -59,6 +60,7 @@ if [ -f "$BINARY_PATH" ]; then
 
     BUILD_NUMBER=$(date +%Y%m%d%H%M)
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$APP_DIR/Contents/Info.plist"
 
     echo "🔐 Re-signing app..."
     sign_app
@@ -93,7 +95,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>CFBundleVersion</key>
     <string>${BUILD_NUMBER}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${RELEASE_VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>

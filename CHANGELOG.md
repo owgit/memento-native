@@ -2,6 +2,19 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.3] - 2026-03-12
+
+### Improved
+- Semantic search now selects on-device embedding models per language instead of assuming a single language path
+- Capture builds cleaner semantic summaries from app name, URL, title, clipboard, and deduplicated OCR instead of a single noisy text blob
+- Timeline search ranks URL, title, clipboard, OCR, and semantic matches more consistently in hybrid results
+
+### Fixed
+- Browser URL/title capture now declares Apple Events usage correctly so recent browser history can be indexed again
+- Browser AppleScript failures are now logged once per error signature instead of failing silently
+- Timeline `⌘F` button now uses a search icon instead of the command symbol
+- Update relaunch flow now waits for the old process to exit before reopening `Memento Capture`
+
 ## [2.0.2] - 2026-03-07
 
 ### Fixed

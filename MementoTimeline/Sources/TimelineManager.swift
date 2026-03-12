@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import SQLite3
+import NaturalLanguage
 
 private struct VideoClip: Sendable {
     let startFrameId: Int
@@ -286,7 +287,6 @@ private enum TimelineSearchWorker {
         defer { sqlite3_close(db) }
 
         var results: [TimelineManager.SearchResult] = []
-        let lowerQuery = request.query.lowercased()
         let likePattern = "%\(request.query)%"
         let searchTokens = normalizedSearchTokens(for: request.query)
         let normalizedQuery = normalizeForSearch(request.query)
@@ -329,6 +329,14 @@ private enum TimelineSearchWorker {
                         text: String(text.prefix(100)),
                         timestamp: timestamp,
                         appName: appName,
+                        score: textMatchScore(
+                            text: text,
+                            url: url,
+                            normalizedQuery: normalizedQuery,
+                            tokens: searchTokens,
+                            matchType: .ocr,
+                            rankIndex: results.count
+                        ),
                         url: url,
                         matchType: .ocr
                     )
@@ -380,13 +388,13 @@ private enum TimelineSearchWorker {
                 let matchType: TimelineManager.SearchResult.MatchType
                 let displayText: String
 
-                if let url, url.lowercased().contains(lowerQuery) {
+                if let url, normalizeForSearch(url).contains(normalizedQuery) {
                     matchType = .url
                     displayText = url
-                } else if let tabTitle, tabTitle.lowercased().contains(lowerQuery) {
+                } else if let tabTitle, normalizeForSearch(tabTitle).contains(normalizedQuery) {
                     matchType = .title
                     displayText = tabTitle
-                } else if let clipboard, clipboard.lowercased().contains(lowerQuery) {
+                } else if let clipboard, normalizeForSearch(clipboard).contains(normalizedQuery) {
                     matchType = .clipboard
                     displayText = String(clipboard.prefix(100))
                 } else {
@@ -398,6 +406,14 @@ private enum TimelineSearchWorker {
                     text: displayText,
                     timestamp: timestamp,
                     appName: windowTitle,
+                    score: textMatchScore(
+                        text: displayText,
+                        url: url,
+                        normalizedQuery: normalizedQuery,
+                        tokens: searchTokens,
+                        matchType: matchType,
+                        rankIndex: results.count
+                    ),
                     url: url,
                     matchType: matchType
                 )
@@ -407,8 +423,15 @@ private enum TimelineSearchWorker {
             sqlite3_finalize(stmt)
         }
 
+        let sortedResults = results.sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.frameId > rhs.frameId
+            }
+            return lhs.score > rhs.score
+        }
+
         return TimelineSearchExecutionResult(
-            results: deduplicate(results),
+            results: deduplicate(sortedResults),
             errorMessage: nil
         )
     }
@@ -474,6 +497,14 @@ private enum TimelineSearchWorker {
                     text: searchSnippet(from: aggregatedText, query: request.query, tokens: tokens),
                     timestamp: timestamp,
                     appName: appName,
+                    score: textMatchScore(
+                        text: aggregatedText,
+                        url: url,
+                        normalizedQuery: normalizedQuery,
+                        tokens: tokens,
+                        matchType: .ocr,
+                        rankIndex: results.count
+                    ),
                     url: url,
                     matchType: .ocr
                 )
@@ -485,10 +516,11 @@ private enum TimelineSearchWorker {
     static func performSemanticSearch(_ request: TimelineSearchRequest) -> TimelineSearchExecutionResult {
         let embeddingService = EmbeddingService()
 
-        guard let queryVector = embeddingService.embed(request.query) else {
+        let queryEmbeddings = embeddingService.queryEmbeddingResults(for: request.query)
+        guard !queryEmbeddings.isEmpty else {
             return performTextSearch(request)
         }
-        let queryQuantized = embeddingService.quantize(queryVector)
+        let quantizedQueryEmbeddings = queryEmbeddings.mapValues { embeddingService.quantize($0.vector) }
 
         var db: OpaquePointer?
         guard sqlite3_open_v2(request.dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
@@ -496,7 +528,7 @@ private enum TimelineSearchWorker {
         }
         defer { sqlite3_close(db) }
 
-        let sql = "SELECT frame_id, vector, quantized, text_summary FROM EMBEDDING"
+        let sql = "SELECT frame_id, vector, quantized, text_summary, language FROM EMBEDDING"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             return TimelineSearchExecutionResult(results: [], errorMessage: nil)
@@ -518,14 +550,29 @@ private enum TimelineSearchWorker {
             let vectorData = Data(bytes: blobPtr, count: blobSize)
             let isQuantized = sqlite3_column_int(stmt, 2) == 1
             let summary = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
+            let storedLanguage = sqlite3_column_text(stmt, 4).map { NLLanguage(rawValue: String(cString: $0)) }
 
             let similarity: Float
             if isQuantized {
                 let storedQuantized = embeddingService.dataToQuantized(vectorData)
-                similarity = embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized)
+                if let storedLanguage,
+                   let queryQuantized = quantizedQueryEmbeddings[storedLanguage] {
+                    similarity = embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized)
+                } else {
+                    similarity = quantizedQueryEmbeddings.values.reduce(into: -1) { best, queryQuantized in
+                        best = max(best, embeddingService.cosineSimilarityQuantized(queryQuantized, storedQuantized))
+                    }
+                }
             } else {
                 let storedVector = embeddingService.dataToVector(vectorData)
-                similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
+                if let storedLanguage,
+                   let queryEmbedding = queryEmbeddings[storedLanguage] {
+                    similarity = embeddingService.cosineSimilarity(queryEmbedding.vector, storedVector)
+                } else {
+                    similarity = queryEmbeddings.values.reduce(into: -1) { best, candidate in
+                        best = max(best, embeddingService.cosineSimilarity(candidate.vector, storedVector))
+                    }
+                }
             }
 
             if similarity > semanticSimilarityThreshold {
@@ -590,16 +637,29 @@ private enum TimelineSearchWorker {
 
         for (index, textResult) in textFallbackResults.enumerated() {
             if var semantic = mergedByFrame[textResult.frameId] {
-                semantic.text = semantic.text.isEmpty ? textResult.text : semantic.text
-                semantic.matchType = semantic.matchType == .ocr ? semantic.matchType : textResult.matchType
-                semantic.score = min(0.99, max(semantic.score, semantic.score + 0.12))
+                if semantic.text.isEmpty || textResult.matchType != .ocr {
+                    semantic.text = textResult.text
+                }
+                if textResult.matchType != .ocr || semantic.matchType == .ocr {
+                    semantic.matchType = textResult.matchType
+                }
+                semantic.score = blendedScore(
+                    semanticScore: semantic.score,
+                    textScore: textResult.score,
+                    matchType: textResult.matchType,
+                    textRank: index
+                )
                 mergedByFrame[textResult.frameId] = semantic
                 continue
             }
 
             var boostedText = textResult
-            let rankDecay = Float(index) * 0.015
-            boostedText.score = max(0.18, 0.42 - rankDecay)
+            boostedText.score = blendedScore(
+                semanticScore: 0,
+                textScore: textResult.score,
+                matchType: textResult.matchType,
+                textRank: index
+            )
             mergedByFrame[textResult.frameId] = boostedText
         }
 
@@ -703,6 +763,54 @@ private enum TimelineSearchWorker {
             snippet += "..."
         }
         return snippet
+    }
+
+    private static func textMatchScore(
+        text: String,
+        url: String?,
+        normalizedQuery: String,
+        tokens: [String],
+        matchType: TimelineManager.SearchResult.MatchType,
+        rankIndex: Int
+    ) -> Float {
+        let primaryText = matchType == .url ? (url ?? text) : text
+        let normalizedText = normalizeForSearch(primaryText)
+
+        let tokenMatches = tokens.reduce(into: 0) { count, token in
+            if normalizedText.contains(token) {
+                count += 1
+            }
+        }
+        let coverage = tokens.isEmpty ? 0 : Float(tokenMatches) / Float(tokens.count)
+        let exactBoost: Float = normalizedQuery.isEmpty || !normalizedText.contains(normalizedQuery) ? 0 : 0.12
+        let coverageBoost = coverage * 0.14
+        let rankPenalty = min(0.12, Float(rankIndex) * 0.008)
+
+        let base: Float
+        switch matchType {
+        case .url:
+            base = 0.82
+        case .title:
+            base = 0.77
+        case .clipboard:
+            base = 0.72
+        case .ocr:
+            base = 0.62
+        }
+
+        return max(0.16, min(0.99, base + exactBoost + coverageBoost - rankPenalty))
+    }
+
+    private static func blendedScore(
+        semanticScore: Float,
+        textScore: Float,
+        matchType: TimelineManager.SearchResult.MatchType,
+        textRank: Int
+    ) -> Float {
+        let textRankPenalty = min(0.08, Float(textRank) * 0.006)
+        let textWeight: Float = matchType == .ocr ? 0.35 : 0.5
+        let baseScore = max(semanticScore, semanticScore * 0.78 + textScore * textWeight)
+        return min(0.99, max(baseScore, textScore - textRankPenalty))
     }
 
     private static func deduplicate(
@@ -847,7 +955,7 @@ class TimelineManager: ObservableObject {
     struct SearchResult: Identifiable, Sendable {
         let id = UUID()
         let frameId: Int
-        let text: String
+        var text: String
         let timestamp: String
         let appName: String
         var score: Float = 0  // Similarity score for semantic search (0-1)

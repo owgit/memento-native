@@ -720,16 +720,51 @@ class MenuBarManager {
     }
 
     private func relaunchAfterUpdateInstall() {
-        // Launch a detached relaunch command so the new instance survives app termination.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [
-            "-lc",
-            "nohup /bin/sh -c 'sleep 1; /usr/bin/open -n \"/Applications/Memento Capture.app\"' >/dev/null 2>&1 &"
-        ]
-        process.standardOutput = nil
-        process.standardError = nil
-        try? process.run()
+        // Wait for the current process to fully exit before reopening the updated app.
+        let fileManager = FileManager.default
+        let scriptURL = fileManager.temporaryDirectory.appendingPathComponent("memento-relaunch-\(UUID().uuidString).sh")
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let appPath = "/Applications/Memento Capture.app"
+        let script = """
+        #!/bin/bash
+        set -euo pipefail
+
+        APP_PATH=\(shellQuote(appPath))
+        OLD_PID=\(currentPID)
+        SELF_PATH=\(shellQuote(scriptURL.path))
+
+        cleanup() {
+            /bin/rm -f "$SELF_PATH"
+        }
+        trap cleanup EXIT
+
+        for _ in $(/usr/bin/seq 1 100); do
+            if ! /bin/kill -0 "$OLD_PID" >/dev/null 2>&1; then
+                break
+            fi
+            /bin/sleep 0.2
+        done
+
+        /usr/bin/open -n "$APP_PATH" >/dev/null 2>&1 || {
+            /bin/sleep 2
+            /usr/bin/open -n "$APP_PATH" >/dev/null 2>&1
+        }
+        """
+
+        do {
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [scriptURL.path]
+            process.standardOutput = nil
+            process.standardError = nil
+            try process.run()
+        } catch {
+            print("⚠️ Failed to schedule relaunch: \(error)")
+        }
+
         NSApp.terminate(nil)
     }
 

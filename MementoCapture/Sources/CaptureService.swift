@@ -251,22 +251,26 @@ class CaptureService {
             return
         }
         
-        // Generate quantized embedding for semantic search (8x smaller storage)
-        // Include OCR + URL + tab title + clipboard for better semantic search
-        var embeddingParts: [String] = []
-        
-        if let url = browserInfo?.url, !url.isEmpty { embeddingParts.append(url) }
-        if let title = browserInfo?.title, !title.isEmpty { embeddingParts.append(title) }
-        if !activeApp.isEmpty { embeddingParts.append(activeApp) }
-        if let clip = clipboardContent, !clip.isEmpty { embeddingParts.append(clip) }
-        embeddingParts.append(contentsOf: ocrResults.map { $0.text })
-        
-        let allText = embeddingParts.joined(separator: " ")
-        if !allText.isEmpty, let vector = embeddingService.embed(allText) {
-            let quantized = embeddingService.quantize(vector)
+        // Generate a language-aware embedding using structured signals instead of a raw text blob.
+        let semanticDocument = buildSemanticDocument(
+            activeApp: activeApp,
+            url: browserInfo?.url,
+            tabTitle: browserInfo?.title,
+            clipboardContent: clipboardContent,
+            ocrResults: ocrResults
+        )
+        if !semanticDocument.embeddingText.isEmpty,
+           let embedding = embeddingService.embed(semanticDocument.embeddingText) {
+            let quantized = embeddingService.quantize(embedding.vector)
             let vectorData = embeddingService.quantizedToData(quantized)
-            let summary = String(allText.prefix(200))
-            if !database.insertEmbedding(frameId: frameCount, vector: vectorData, textSummary: summary, quantized: true) {
+            if !database.insertEmbedding(
+                frameId: frameCount,
+                vector: vectorData,
+                textSummary: semanticDocument.summary,
+                quantized: true,
+                language: embedding.language.rawValue,
+                revision: embedding.revision
+            ) {
                 print("⚠️ Failed to persist embedding for frame \(frameCount)")
             }
         }
@@ -586,6 +590,100 @@ class CaptureService {
                 print("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
             }
         }
+    }
+
+    private struct SemanticDocument {
+        let embeddingText: String
+        let summary: String
+    }
+
+    private func buildSemanticDocument(
+        activeApp: String,
+        url: String?,
+        tabTitle: String?,
+        clipboardContent: String?,
+        ocrResults: [TextBlock]
+    ) -> SemanticDocument {
+        let title = sanitizeSemanticSegment(tabTitle, maxLength: 180)
+        let urlString = sanitizeSemanticSegment(url, maxLength: 220)
+        let host = sanitizedHost(from: url)
+        let app = sanitizeSemanticSegment(activeApp, maxLength: 80)
+        let clipboard = sanitizeSemanticSegment(clipboardContent, maxLength: 240)
+
+        var uniqueOCRLines: [String] = []
+        var seenOCRLines = Set<String>()
+        for block in ocrResults {
+            let cleaned = sanitizeSemanticSegment(block.text, maxLength: 120)
+            guard !cleaned.isEmpty else { continue }
+
+            let signature = cleaned.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            if seenOCRLines.insert(signature).inserted {
+                uniqueOCRLines.append(cleaned)
+            }
+            if uniqueOCRLines.count >= 24 {
+                break
+            }
+        }
+
+        let ocrSummary = uniqueOCRLines.prefix(8).joined(separator: " • ")
+        let ocrText = uniqueOCRLines.joined(separator: " ")
+
+        var embeddingSections: [String] = []
+        var summarySections: [String] = []
+
+        if !title.isEmpty {
+            embeddingSections.append("page title \(title)")
+            summarySections.append(title)
+        }
+        if !host.isEmpty {
+            embeddingSections.append("website \(host)")
+        }
+        if !urlString.isEmpty {
+            embeddingSections.append("url \(urlString)")
+            if summarySections.isEmpty {
+                summarySections.append(urlString)
+            }
+        }
+        if !app.isEmpty {
+            embeddingSections.append("application \(app)")
+            summarySections.append(app)
+        }
+        if !clipboard.isEmpty {
+            embeddingSections.append("clipboard \(clipboard)")
+            summarySections.append(String(clipboard.prefix(80)))
+        }
+        if !ocrText.isEmpty {
+            embeddingSections.append("screen text \(ocrText)")
+            if !ocrSummary.isEmpty {
+                summarySections.append(ocrSummary)
+            }
+        }
+
+        let embeddingText = embeddingSections.joined(separator: ". ")
+        let summary = summarySections
+            .joined(separator: " • ")
+            .prefix(240)
+            .description
+
+        return SemanticDocument(embeddingText: embeddingText, summary: summary)
+    }
+
+    private func sanitizeSemanticSegment(_ value: String?, maxLength: Int) -> String {
+        guard let value else { return "" }
+        return value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(maxLength)
+            .description
+    }
+
+    private func sanitizedHost(from urlString: String?) -> String {
+        guard let urlString,
+              let components = URLComponents(string: urlString),
+              let host = components.host else {
+            return ""
+        }
+        return sanitizeSemanticSegment(host, maxLength: 80)
     }
 }
 

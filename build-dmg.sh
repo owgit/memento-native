@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-DEFAULT_VERSION="1.0.4"
+DEFAULT_VERSION="2.0.3"
 if [ "$#" -gt 1 ]; then
     echo "Usage: $0 [version]"
     echo "   or: MEMENTO_VERSION=1.2.3 $0"
@@ -166,6 +166,8 @@ cat > "$CAPTURE_APP/Contents/Info.plist" << EOF
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Memento needs screen recording to capture and search your screen history.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Memento needs Automation access to read the active browser tab URL and title for search history.</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2024-2025 Uygar Düzgün. PolyForm Noncommercial License.</string>
 </dict>
