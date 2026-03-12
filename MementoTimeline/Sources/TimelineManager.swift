@@ -276,6 +276,7 @@ private enum TimelineSearchWorker {
     private static let duplicateFrameWindow = 12
     private static let duplicateTimeWindow: TimeInterval = 15 * 60
     private static let fallbackCandidateMultiplier = 4
+    private static let semanticSimilarityThreshold: Float = 0.15
 
     static func performTextSearch(_ request: TimelineSearchRequest) -> TimelineSearchExecutionResult {
         var db: OpaquePointer?
@@ -502,7 +503,7 @@ private enum TimelineSearchWorker {
         }
         defer { sqlite3_finalize(stmt) }
 
-        var matches: [(frameId: Int, similarity: Float, summary: String)] = []
+        var semanticMatches: [(frameId: Int, similarity: Float, summary: String)] = []
 
         while sqlite3_step(stmt) == SQLITE_ROW {
             if Task.isCancelled {
@@ -527,24 +528,24 @@ private enum TimelineSearchWorker {
                 similarity = embeddingService.cosineSimilarity(queryVector, storedVector)
             }
 
-            if similarity > 0.15 {
-                matches.append((frameId, similarity, summary))
+            if similarity > semanticSimilarityThreshold {
+                semanticMatches.append((frameId, similarity, summary))
             }
         }
 
-        matches.sort { $0.similarity > $1.similarity }
-        let topMatches = Array(matches.prefix(30))
-        guard !topMatches.isEmpty else {
-            return TimelineSearchExecutionResult(results: [], errorMessage: nil)
-        }
+        semanticMatches.sort { $0.similarity > $1.similarity }
+        let topSemanticMatches = Array(semanticMatches.prefix(30))
 
-        let frameIds = topMatches.map { String($0.frameId) }.joined(separator: ",")
-        let metaSql = "SELECT id, time, window_title, url FROM FRAME WHERE id IN (\(frameIds))"
+        let frameIds = topSemanticMatches.map { String($0.frameId) }.joined(separator: ",")
+        let metaSql = frameIds.isEmpty
+            ? nil
+            : "SELECT id, time, window_title, url FROM FRAME WHERE id IN (\(frameIds))"
 
         var metaStmt: OpaquePointer?
         var frameMetadata: [Int: (time: String, app: String, url: String?)] = [:]
 
-        if sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
+        if let metaSql,
+           sqlite3_prepare_v2(db, metaSql, -1, &metaStmt, nil) == SQLITE_OK {
             while sqlite3_step(metaStmt) == SQLITE_ROW {
                 let frameId = Int(sqlite3_column_int(metaStmt, 0))
                 let time = sqlite3_column_text(metaStmt, 1).map { String(cString: $0) } ?? ""
@@ -555,7 +556,7 @@ private enum TimelineSearchWorker {
             sqlite3_finalize(metaStmt)
         }
 
-        let results = topMatches.compactMap { match -> TimelineManager.SearchResult? in
+        let semanticResults = topSemanticMatches.compactMap { match -> TimelineManager.SearchResult? in
             guard let metadata = frameMetadata[match.frameId] else { return nil }
             return TimelineManager.SearchResult(
                 frameId: match.frameId,
@@ -567,10 +568,47 @@ private enum TimelineSearchWorker {
             )
         }
 
+        let textFallbackResults = Array(performTextSearch(request).results.prefix(20))
+        let blendedResults = blendSemanticResults(semanticResults, with: textFallbackResults)
+
         return TimelineSearchExecutionResult(
-            results: deduplicate(results),
+            results: deduplicate(blendedResults),
             errorMessage: nil
         )
+    }
+
+    private static func blendSemanticResults(
+        _ semanticResults: [TimelineManager.SearchResult],
+        with textFallbackResults: [TimelineManager.SearchResult]
+    ) -> [TimelineManager.SearchResult] {
+        var mergedByFrame: [Int: TimelineManager.SearchResult] = [:]
+        mergedByFrame.reserveCapacity(semanticResults.count + textFallbackResults.count)
+
+        for semantic in semanticResults {
+            mergedByFrame[semantic.frameId] = semantic
+        }
+
+        for (index, textResult) in textFallbackResults.enumerated() {
+            if var semantic = mergedByFrame[textResult.frameId] {
+                semantic.text = semantic.text.isEmpty ? textResult.text : semantic.text
+                semantic.matchType = semantic.matchType == .ocr ? semantic.matchType : textResult.matchType
+                semantic.score = min(0.99, max(semantic.score, semantic.score + 0.12))
+                mergedByFrame[textResult.frameId] = semantic
+                continue
+            }
+
+            var boostedText = textResult
+            let rankDecay = Float(index) * 0.015
+            boostedText.score = max(0.18, 0.42 - rankDecay)
+            mergedByFrame[textResult.frameId] = boostedText
+        }
+
+        return mergedByFrame.values.sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.frameId > rhs.frameId
+            }
+            return lhs.score > rhs.score
+        }
     }
 
     private static func normalizedSearchTokens(for query: String) -> [String] {
