@@ -1,14 +1,13 @@
 import Foundation
 import AppKit
-import SwiftUI
 
 /// App delegate for handling lifecycle
-class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarManager: MenuBarManager?
     private let lastLaunchVersionKey = "lastLaunchVersion"
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("🚀 Memento Capture Service starting...")
+        AppLog.info("🚀 Memento Capture Service starting...")
 
         // Initialize capture service (actual start is permission-gated in MenuBarManager)
         let service = CaptureService.shared
@@ -28,10 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func showStartupGuideIfNeeded() {
-        guard let info = Bundle.main.infoDictionary else { return }
-        let shortVersion = info["CFBundleShortVersionString"] as? String ?? "?"
-        let buildVersion = info["CFBundleVersion"] as? String ?? "?"
-        let currentVersion = "\(shortVersion) (\(buildVersion))"
+        let currentVersion = AppVersionInfo.displayVersion
 
         let defaults = UserDefaults.standard
         let previousVersion = defaults.string(forKey: lastLaunchVersionKey)

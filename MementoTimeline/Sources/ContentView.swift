@@ -42,8 +42,7 @@ func formatTimeDisplay(_ timestamp: String) -> String {
         let yDay = calendar.component(.day, from: yesterday)
         let yMonth = calendar.component(.month, from: yesterday)
         if day == yDay && month == yMonth && year == thisYear {
-            let isSwedish = Locale.current.language.languageCode?.identifier == "sv"
-            return "\(isSwedish ? "igår" : "yesterday") \(timeStr)"
+            return "\(L.isSwedish ? "igår" : "yesterday") \(timeStr)"
         }
     }
     
@@ -111,7 +110,7 @@ struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showControls = true
-    @State private var controlsTimer: Timer?
+    @State private var controlsHideTask: Task<Void, Never>?
     @State private var isHoveringTimeline = false
     @State private var mouseLocation: CGPoint = .zero
     @State private var zoomLevel: CGFloat = 1.0
@@ -185,37 +184,9 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
             
-            // Text overlay panel
-            if manager.showTextOverlay {
-                textOverlay
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-            
             // Loading indicator
             if manager.isLoading || manager.isLoadingMore {
                 loadingView
-            }
-            
-            // Copied notification
-            if manager.copiedNotification {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Image(systemName: "doc.on.clipboard.fill")
-                        Text(L.copied)
-                    }
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(
-                        Capsule()
-                            .fill(Color.green.opacity(0.9))
-                    )
-                    .padding(.bottom, 140)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.spring(response: 0.3), value: manager.copiedNotification)
             }
         }
         .background(Color.black)
@@ -269,12 +240,23 @@ struct ContentView: View {
                 manager.isSearching = false
             }
         }
+        .task {
+            await manager.bootstrapIfNeeded()
+        }
         .onAppear { 
             setupKeyHandling()
         }
         .onDisappear {
             hoverPreviewTask?.cancel()
             hoverPreviewTask = nil
+            searchDebounceTask?.cancel()
+            searchDebounceTask = nil
+            controlsHideTask?.cancel()
+            controlsHideTask = nil
+            for monitor in eventMonitors {
+                NSEvent.removeMonitor(monitor)
+            }
+            eventMonitors.removeAll()
         }
         .onHover { hovering in
             if hovering {
@@ -297,13 +279,29 @@ struct ContentView: View {
                 // Use a single native image view for both rendering and Live Text
                 // to avoid layout drift between highlight and visible pixels.
                 LiveTextImageView(image: image, zoomLevel: $zoomLevel, isFitToScreen: true)
-            } else {
-                // Loading state
+            } else if manager.isLoading {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    Text(manager.totalFrames > 0 ? L.loading : L.noCapturesYet)
+                    Text(L.loading)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            } else if manager.totalFrames > 0 {
+                VStack(spacing: 14) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.72))
+                    Text(L.readyToLoadFrame)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.68))
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+            } else {
+                VStack(spacing: 16) {
+                    Text(L.noCapturesYet)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -402,30 +400,6 @@ struct ContentView: View {
                         }
                         .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.isCommandPaletteOpen))
                         .help(L.commandPaletteHelp)
-                        
-                        // Text panel
-                        Button(action: { 
-                            withAnimation(.spring(response: 0.3)) { 
-                                manager.showTextOverlay.toggle()
-                                if manager.showTextOverlay {
-                                    manager.loadTextForCurrentFrame()
-                                }
-                            }
-                        }) {
-                            Image(systemName: manager.showTextOverlay ? "text.bubble.fill" : "text.bubble")
-                                .font(.system(size: 13))
-                        }
-                        .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.showTextOverlay))
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help(L.showTextHelp)
-                        
-                        // Copy all
-                        Button(action: { manager.copyAllText() }) {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 13))
-                        }
-                        .buttonStyle(ControlButtonStyle(size: 30))
-                        .help(L.copyTextHelp)
                     }
                 }
             }
@@ -584,21 +558,6 @@ struct ContentView: View {
         }
     }
     
-    private func formatTime(_ timeString: String) -> String {
-        // Extract HH:mm from both ISO and SQL-like timestamp formats.
-        let clean = timeString.replacingOccurrences(of: "\"", with: "")
-        let parts = clean.contains("T") ? clean.split(separator: "T") : clean.split(separator: " ")
-        if parts.count >= 2 {
-            let timePart = String(parts[1]).replacingOccurrences(of: "Z", with: "")
-            let timeComponents = timePart.split(separator: ":")
-            if timeComponents.count >= 2 {
-                return "\(timeComponents[0]):\(timeComponents[1])"
-            }
-            return timePart
-        }
-        return clean
-    }
-
     private func timelineHoverPreview(hoverIndex: Int, segment: TimelineManager.TimelineSegment) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack {
@@ -1163,103 +1122,13 @@ struct ContentView: View {
         )
     }
     
-    // MARK: - Text Overlay
-    private var textOverlay: some View {
-        HStack {
-            Spacer()
-            
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Image(systemName: "text.quote")
-                        .font(.system(size: 14))
-                    Text(L.textFromScreenshot)
-                        .font(.system(size: 14, weight: .semibold))
-                    
-                    Spacer()
-                    
-                    // Copy all button
-                    Button(action: { manager.copyAllText() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "doc.on.doc")
-                            Text(L.copyAll)
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color.blue.opacity(0.8))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    
-                    // Close button
-                    Button(action: { 
-                        withAnimation { manager.showTextOverlay = false }
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white.opacity(0.6))
-                            .frame(width: 24, height: 24)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.05))
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                // Text content
-                if manager.currentFrameText.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "text.magnifyingglass")
-                            .font(.system(size: 36))
-                            .foregroundColor(.white.opacity(0.2))
-                        Text(L.noTextFound)
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(manager.currentFrameText) { block in
-                                TextBlockRow(block: block) {
-                                    manager.copyText(block.text)
-                                }
-                            }
-                        }
-                        .padding(16)
-                    }
-                }
-            }
-            .frame(width: 380)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.95)))
-                    .shadow(color: .black.opacity(0.4), radius: 20, x: -5)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
-            .padding(.trailing, 20)
-            .padding(.vertical, 80)
-        }
-    }
-    
     // MARK: - Helpers
     private func showControlsTemporarily() {
         showControls = true
-        controlsTimer?.invalidate()
-        controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+        controlsHideTask?.cancel()
+        controlsHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
             if !isHoveringTimeline {
                 withAnimation { showControls = false }
             }
@@ -1342,21 +1211,6 @@ struct ContentView: View {
                 tint: .blue
             ) {
                 openSearchOverlay()
-            },
-            CommandPaletteEntry(
-                id: "toggle-text",
-                title: manager.showTextOverlay ? L.commandHideTextPanel : L.commandShowTextPanel,
-                subtitle: L.commandTextPanelSubtitle,
-                icon: manager.showTextOverlay ? "text.bubble.fill" : "text.bubble",
-                tint: .purple
-            ) {
-                withAnimation(.spring(response: 0.3)) {
-                    manager.showTextOverlay.toggle()
-                    if manager.showTextOverlay {
-                        manager.loadTextForCurrentFrame()
-                    }
-                }
-                closeCommandPalette()
             },
             CommandPaletteEntry(
                 id: "toggle-mode",
@@ -1964,7 +1818,6 @@ struct LiveTextImageView: NSViewRepresentable {
         var analyzer: ImageAnalyzer?
         var overlayView: ImageAnalysisOverlayView?
         var currentImageHash: Int = 0
-        var scrollView: NSScrollView?
         
         override init() {
             super.init()
@@ -1995,7 +1848,7 @@ struct LiveTextImageView: NSViewRepresentable {
                             overlayView.analysis = analysis
                         }
                     } catch {
-                        print("⚠️ Live Text analysis failed: \(error)")
+                        AppLog.warning("⚠️ Live Text analysis failed: \(error)")
                     }
                 }
             }
@@ -2016,7 +1869,6 @@ struct LiveTextImageView: NSViewRepresentable {
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 5.0
-        context.coordinator.scrollView = scrollView
         
         let clipView = NSClipView()
         clipView.backgroundColor = .clear
@@ -2151,46 +2003,8 @@ struct LiveTextImageView: NSViewRepresentable {
 }
 
 // Helper view that doesn't flip coordinates
-class FlippedView: NSView {
+final class FlippedView: NSView {
     override var isFlipped: Bool { false }
-}
-
-// MARK: - Text Block Row
-struct TextBlockRow: View {
-    let block: TimelineManager.TextBlock
-    let onCopy: () -> Void
-    @State private var isHovered = false
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(block.text)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.9))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            if isHovered {
-                Button(action: onCopy) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
-        )
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
-    }
 }
 
 // MARK: - App Icon View

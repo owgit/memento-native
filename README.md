@@ -11,16 +11,14 @@ Ever closed a tab and forgot the URL? Lost an important message? Can't remember 
 
 > Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
 
-## Latest (v2.0.3)
+## Latest (v2.0.4)
 
-- Unified **Setup Hub** for first-run, permission fixes, and update recovery
-- **Action Hub / Command Palette** (`⌘F`) for search + quick actions
-- Direct search panel moved to `⌘K`
-- Menubar **Control Center** chips (recording state, permission state, last capture)
-- Smarter capture auto-pause (idle + video/streaming + private/incognito browsing)
-- Improved multilingual semantic search and URL/title ranking for browser history
-- Browser URL/title capture now requests the correct macOS Automation permission when needed
-- Automatic monthly update checks with menu + notification indicators when a new release is available
+- Swift 6 migration and concurrency hardening for both Capture and Timeline
+- Capture service now prevents overlapping frame capture jobs
+- Setup Hub permission repair flow now tracks/cancels repair tasks cleanly
+- Dead-code cleanup across database/search/embedding/onboarding paths
+- Unified `OSLog` logging wrappers and cleaner runtime diagnostics
+- Shared helpers for app version and storage metrics to reduce duplicated logic
 
 ## Use Cases
 
@@ -58,7 +56,7 @@ Download the latest DMG from [Releases](https://github.com/owgit/memento-native/
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
-./build-dmg.sh 2.0.3  # Creates dist/Memento-Native-2.0.3.dmg
+./build-dmg.sh 2.0.4  # Creates dist/Memento-Native-2.0.4.dmg
 # Or build individually:
 cd MementoCapture && ./bundle.sh
 cd ../MementoTimeline && ./bundle.sh

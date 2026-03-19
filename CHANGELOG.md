@@ -2,6 +2,21 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.4] - 2026-03-19
+
+### Added
+- Structured `OSLog` wrappers for both Capture and Timeline targets
+- Shared runtime helpers for app version labels and storage-byte aggregation
+
+### Improved
+- Swift 6 migration and concurrency hardening across Capture + Timeline packages
+- Capture scheduling now prevents overlapping frame jobs and handles in-flight cancellation during stop/interval changes
+- Setup Hub and Timeline state flows are simplified with safer task/event monitor teardown
+
+### Fixed
+- Removed dead/unused code paths (legacy onboarding window, stale DB/search helpers, unused embedding APIs, redundant properties/imports)
+- Standardized screenshot error logging and reduced duplicated utility logic for localization/version/storage formatting
+
 ## [2.0.3] - 2026-03-12
 
 ### Improved

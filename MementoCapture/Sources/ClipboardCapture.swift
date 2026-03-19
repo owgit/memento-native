@@ -2,7 +2,8 @@ import Foundation
 import AppKit
 
 /// Captures clipboard content (can be disabled in settings)
-class ClipboardCapture {
+@MainActor
+final class ClipboardCapture {
     
     static let shared = ClipboardCapture()
     

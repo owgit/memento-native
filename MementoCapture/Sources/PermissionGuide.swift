@@ -46,7 +46,7 @@ private enum SetupHubState {
 
 /// Unified setup hub for first launch, updates and permission recovery.
 @MainActor
-class PermissionGuideController {
+final class PermissionGuideController {
     static let shared = PermissionGuideController()
     private var window: NSWindow?
 
@@ -66,16 +66,12 @@ class PermissionGuideController {
 
         let hostingController = NSHostingController(rootView: root)
         window = NSWindow(contentViewController: hostingController)
-        window?.title = isSwedish ? "Setup Hub" : "Setup Hub"
+        window?.title = "Setup Hub"
         window?.styleMask = [.titled, .closable]
         window?.setContentSize(NSSize(width: SetupHubVisualTokens.windowWidth, height: SetupHubVisualTokens.windowHeight))
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private var isSwedish: Bool {
-        Locale.current.language.languageCode?.identifier == "sv"
     }
 }
 
@@ -87,13 +83,12 @@ struct SetupHubView: View {
     @State private var hasPermission = false
     @State private var checkingPermission = false
     @State private var repairingPermission = false
-    @State private var permissionPollTimer: Timer?
+    @State private var permissionPollTask: Task<Void, Never>?
+    @State private var repairTask: Task<Void, Never>?
     @State private var repairStatusMessage: String?
     @State private var repairStatusIsError = false
 
-    private var isSwedish: Bool {
-        Locale.current.language.languageCode?.identifier == "sv"
-    }
+    private var isSwedish: Bool { L.isSwedish }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -143,8 +138,11 @@ struct SetupHubView: View {
         .frame(width: SetupHubVisualTokens.windowWidth, height: SetupHubVisualTokens.windowHeight)
         .onAppear { checkPermission() }
         .onDisappear {
-            permissionPollTimer?.invalidate()
-            permissionPollTimer = nil
+            permissionPollTask?.cancel()
+            permissionPollTask = nil
+            repairTask?.cancel()
+            repairTask = nil
+            repairingPermission = false
         }
     }
 
@@ -429,9 +427,7 @@ struct SetupHubView: View {
     }
 
     private var appVersionLabel: String {
-        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        return "\(short) (\(build))"
+        AppVersionInfo.displayVersion
     }
 
     private func stepRow(_ number: Int, _ text: String) -> some View {
@@ -484,10 +480,13 @@ struct SetupHubView: View {
         repairStatusMessage = nil
         repairStatusIsError = false
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let success = resetScreenCapturePermission()
+        repairTask?.cancel()
+        repairTask = Task.detached(priority: .userInitiated) {
+            let success = Self.resetScreenCapturePermission()
+            guard !Task.isCancelled else { return }
 
-            DispatchQueue.main.async {
+            await MainActor.run {
+                repairTask = nil
                 repairingPermission = false
                 if success {
                     requestPermissionFromSystem(afterReset: true)
@@ -533,30 +532,28 @@ struct SetupHubView: View {
     }
 
     private func startPermissionPolling() {
-        permissionPollTimer?.invalidate()
-
-        var attempts = 0
-        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            attempts += 1
-            checkPermission()
-            if hasPermission || attempts >= 30 {
-                timer.invalidate()
-                permissionPollTimer = nil
+        permissionPollTask?.cancel()
+        permissionPollTask = Task { @MainActor in
+            for attempt in 1...30 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                checkPermission()
                 if hasPermission {
                     repairStatusIsError = false
                     repairStatusMessage = isSwedish
                         ? "Behörighet registrerad. Starta om appen en gång."
                         : "Permission detected. Restart the app once."
+                    permissionPollTask = nil
+                    return
+                }
+                if attempt >= 30 {
+                    permissionPollTask = nil
                 }
             }
         }
-
-        if let permissionPollTimer {
-            RunLoop.main.add(permissionPollTimer, forMode: .common)
-        }
     }
 
-    private func resetScreenCapturePermission() -> Bool {
+    nonisolated private static func resetScreenCapturePermission() -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
         process.arguments = ["reset", "ScreenCapture", "com.memento.capture"]

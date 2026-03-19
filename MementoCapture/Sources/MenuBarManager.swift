@@ -5,7 +5,7 @@ import UserNotifications
 
 /// Menu bar icon manager for Memento Capture
 @MainActor
-class MenuBarManager {
+final class MenuBarManager {
     private var statusItem: NSStatusItem?
     private var isCapturing = true
     private var isCaptureServiceRunning = false
@@ -45,11 +45,14 @@ class MenuBarManager {
         }
         
         setupMenu()
-        refreshPermissionState(forceIconUpdate: true)
-        syncCaptureServiceState()
+        refreshPermissionState(forceIconUpdate: true, syncService: false)
         startPermissionMonitoring()
         startStatusRefresh()
         startUpdateChecks()
+
+        Task { @MainActor in
+            self.syncCaptureServiceState()
+        }
     }
     
     private func setupMenu() {
@@ -129,9 +132,7 @@ class MenuBarManager {
         
         // Version (at the bottom, disabled)
         menu.addItem(NSMenuItem.separator())
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        let versionItem = NSMenuItem(title: "v\(version) (\(build))", action: nil, keyEquivalent: "")
+        let versionItem = NSMenuItem(title: "v\(AppVersionInfo.displayVersion)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
         menu.addItem(versionItem)
         
@@ -153,18 +154,7 @@ class MenuBarManager {
             }
             button.image?.isTemplate = true
         }
-        
-        // Update menu items
-        if let menu = statusItem?.menu {
-            menu.item(withTag: 101)?.title = isCapturing ? L.pauseRecording : L.resumeRecording
-        }
         updateControlCenter()
-    }
-    
-    @objc private func toggleCapture() {
-        isCapturing.toggle()
-        syncCaptureServiceState()
-        updateIcon()
     }
     
     @objc private func openTimeline() {
@@ -180,7 +170,7 @@ class MenuBarManager {
                 return
             }
         }
-        print("⚠️ Memento Timeline not found")
+        AppLog.warning("⚠️ Memento Timeline not found")
     }
     
     @objc private func openSettings() {
@@ -298,11 +288,13 @@ class MenuBarManager {
         }
     }
 
-    private func refreshPermissionState(forceIconUpdate: Bool = false) {
+    private func refreshPermissionState(forceIconUpdate: Bool = false, syncService: Bool = true) {
         let latestPermission = ScreenshotCapture.hasPermission()
         let changed = latestPermission != hasScreenPermission
         hasScreenPermission = latestPermission
-        syncCaptureServiceState()
+        if syncService {
+            syncCaptureServiceState()
+        }
         if changed || forceIconUpdate {
             updateIcon()
         }
@@ -485,7 +477,8 @@ class MenuBarManager {
     }
 
     private func currentVersionString() -> String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let version = AppVersionInfo.shortVersion
+        return version == "?" ? "0.0.0" : version
     }
 
     private func isRemoteVersionNewer(_ remote: String, than local: String) -> Bool {
@@ -787,7 +780,7 @@ class MenuBarManager {
             process.standardError = nil
             try process.run()
         } catch {
-            print("⚠️ Failed to schedule relaunch: \(error)")
+            AppLog.warning("⚠️ Failed to schedule relaunch: \(error)")
         }
 
         NSApp.terminate(nil)
@@ -842,13 +835,7 @@ class MenuBarManager {
             sqlite3_close(db)
         }
         
-        if let enumerator = FileManager.default.enumerator(at: cachePath, includingPropertiesForKeys: [.fileSizeKey]) {
-            var totalSize: Int64 = 0
-            while let url = enumerator.nextObject() as? URL {
-                if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                    totalSize += Int64(size)
-                }
-            }
+        if let totalSize = StorageMetrics.totalBytes(in: cachePath) {
             if totalSize > 1_000_000_000 {
                 diskUsage = String(format: "%.1f GB", Double(totalSize) / 1_000_000_000)
             } else {
@@ -913,7 +900,7 @@ class MenuBarManager {
             framesPerVideo: 5
         )
 
-        print("🗑️ Cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
+        AppLog.info("🗑️ Cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
         
         let resultAlert = NSAlert()
         resultAlert.messageText = L.cleanDone

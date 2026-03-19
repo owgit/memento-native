@@ -3,7 +3,7 @@ import AppKit
 
 /// Settings window controller
 @MainActor
-class SettingsWindowController {
+final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
     
@@ -32,7 +32,6 @@ class SettingsWindowController {
 struct SettingsView: View {
     @ObservedObject private var settings = Settings.shared
     @State private var newExcludedApp = ""
-    @State private var showingFolderPicker = false
     @State private var isMigratingStorage = false
     
     var body: some View {
@@ -269,17 +268,10 @@ struct SettingsView: View {
     
     private func folderSize() -> String? {
         let url = URL(fileURLWithPath: settings.storagePath)
-        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+        guard let totalSize = StorageMetrics.totalBytes(in: url) else {
             return nil
         }
-        
-        var totalSize: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                totalSize += Int64(size)
-            }
-        }
-        
+
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: totalSize)

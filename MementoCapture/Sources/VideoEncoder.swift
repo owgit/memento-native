@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
-import VideoToolbox
 
 enum VideoEncoderError: LocalizedError {
     case writerUnavailable
@@ -37,7 +36,8 @@ enum VideoEncoderError: LocalizedError {
 }
 
 /// Hardware-accelerated video encoder using VideoToolbox
-class VideoEncoder {
+@MainActor
+final class VideoEncoder {
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -110,10 +110,10 @@ class VideoEncoder {
             assetWriter!.startSession(atSourceTime: .zero)
             
             isInitialized = true
-            print("🎥 Started video \(index).mp4 (\(width)x\(height))")
+            AppLog.info("🎥 Started video \(index).mp4 (\(width)x\(height))")
             
         } catch {
-            print("⚠️ Failed to create video writer: \(error)")
+            AppLog.warning("⚠️ Failed to create video writer: \(error)")
         }
     }
     
@@ -145,13 +145,13 @@ class VideoEncoder {
                     details: assetWriter.error?.localizedDescription
                 )
             }
-            print("⚠️ Video input not ready")
+            AppLog.warning("⚠️ Video input not ready")
             return false
         }
 
         // Create pixel buffer
         guard let pixelBuffer = createPixelBuffer(from: image) else {
-            print("⚠️ Failed to create pixel buffer")
+            AppLog.warning("⚠️ Failed to create pixel buffer")
             return false
         }
 
@@ -192,7 +192,7 @@ class VideoEncoder {
             )
         }
 
-        print("✅ Finalized video \(finalizedVideoIndex).mp4")
+        AppLog.info("✅ Finalized video \(finalizedVideoIndex).mp4")
     }
     
     private func createPixelBuffer(from image: CGImage) -> CVPixelBuffer? {

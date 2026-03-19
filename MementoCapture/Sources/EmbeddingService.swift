@@ -4,7 +4,7 @@ import Accelerate
 
 /// Local embedding service using Apple NaturalLanguage framework.
 /// Uses language-aware model selection to improve multilingual matching quality.
-class EmbeddingService {
+final class EmbeddingService {
     struct EmbeddingResult {
         let vector: [Float]
         let language: NLLanguage
@@ -15,7 +15,6 @@ class EmbeddingService {
 
     private let sentenceEmbeddings: [NLLanguage: NLEmbedding]
     private let availableLanguages: [NLLanguage]
-    let dimensions: Int
 
     init() {
         var loadedEmbeddings: [NLLanguage: NLEmbedding] = [:]
@@ -28,15 +27,12 @@ class EmbeddingService {
 
         sentenceEmbeddings = loadedEmbeddings
         availableLanguages = Self.supportedLanguages.filter { loadedEmbeddings[$0] != nil }
-        dimensions = availableLanguages
-            .compactMap { loadedEmbeddings[$0]?.dimension }
-            .first ?? 512
 
         if availableLanguages.isEmpty {
-            print("⚠️ Sentence embedding not available")
+            AppLog.warning("⚠️ Sentence embedding not available")
         } else {
             let labels = availableLanguages.map(\.rawValue).joined(separator: ", ")
-            print("🧠 Sentence embeddings loaded: \(labels)")
+            AppLog.info("🧠 Sentence embeddings loaded: \(labels)")
         }
     }
 
@@ -57,36 +53,6 @@ class EmbeddingService {
         }
 
         return nil
-    }
-
-    /// Build query vectors for all plausible language candidates so search can compare
-    /// against embeddings created with different language models.
-    func queryEmbeddings(for text: String, preferredLanguage: NLLanguage? = nil) -> [NLLanguage: [Int8]] {
-        queryEmbeddingResults(for: text, preferredLanguage: preferredLanguage)
-            .mapValues { quantize($0.vector) }
-    }
-
-    func queryEmbeddingResults(for text: String, preferredLanguage: NLLanguage? = nil) -> [NLLanguage: EmbeddingResult] {
-        let cleanText = normalizedEmbeddingText(text)
-        guard !cleanText.isEmpty else { return [:] }
-
-        var results: [NLLanguage: EmbeddingResult] = [:]
-        for language in candidateLanguages(for: cleanText, preferredLanguage: preferredLanguage) {
-            guard let embedding = sentenceEmbeddings[language],
-                  let vector = embedding.vector(for: cleanText) else {
-                continue
-            }
-
-            var floatVector = vector.map(Float.init)
-            normalize(&floatVector)
-            results[language] = EmbeddingResult(
-                vector: floatVector,
-                language: language,
-                revision: embedding.revision
-            )
-        }
-
-        return results
     }
 
     private func normalizedEmbeddingText(_ text: String) -> String {
@@ -144,15 +110,6 @@ class EmbeddingService {
         }
     }
 
-    /// SIMD-accelerated cosine similarity (vectors should be normalized).
-    func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-        guard a.count == b.count else { return 0 }
-
-        var result: Float = 0
-        vDSP_dotpr(a, 1, b, 1, &result, vDSP_Length(a.count))
-        return result
-    }
-
     // MARK: - Quantization (8x smaller storage)
 
     /// Quantize float32 vector to int8 (8x compression).
@@ -164,50 +121,8 @@ class EmbeddingService {
         return vector.map { Int8(clamping: Int(($0 * scale).rounded())) }
     }
 
-    /// Dequantize int8 back to float32.
-    func dequantize(_ quantized: [Int8], scale: Float = 1.0 / 127.0) -> [Float] {
-        quantized.map { Float($0) * scale }
-    }
-
-    /// Cosine similarity for quantized vectors (approximate but fast).
-    func cosineSimilarityQuantized(_ a: [Int8], _ b: [Int8]) -> Float {
-        guard a.count == b.count else { return 0 }
-
-        var dotProduct: Int32 = 0
-        var normA: Int32 = 0
-        var normB: Int32 = 0
-
-        for i in 0..<a.count {
-            let ai = Int32(a[i])
-            let bi = Int32(b[i])
-            dotProduct += ai * bi
-            normA += ai * ai
-            normB += bi * bi
-        }
-
-        let denom = sqrt(Float(normA)) * sqrt(Float(normB))
-        return denom > 0 ? Float(dotProduct) / denom : 0
-    }
-
-    // MARK: - Serialization
-
-    /// Serialize float vector to Data.
-    func vectorToData(_ vector: [Float]) -> Data {
-        vector.withUnsafeBufferPointer { Data(buffer: $0) }
-    }
-
-    /// Deserialize Data to float vector.
-    func dataToVector(_ data: Data) -> [Float] {
-        data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-    }
-
     /// Serialize quantized vector to Data (8x smaller).
     func quantizedToData(_ vector: [Int8]) -> Data {
         vector.withUnsafeBufferPointer { Data(buffer: $0) }
-    }
-
-    /// Deserialize Data to quantized vector.
-    func dataToQuantized(_ data: Data) -> [Int8] {
-        data.withUnsafeBytes { Array($0.bindMemory(to: Int8.self)) }
     }
 }

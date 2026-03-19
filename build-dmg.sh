@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-DEFAULT_VERSION="2.0.3"
+DEFAULT_VERSION="2.0.4"
 if [ "$#" -gt 1 ]; then
     echo "Usage: $0 [version]"
     echo "   or: MEMENTO_VERSION=1.2.3 $0"

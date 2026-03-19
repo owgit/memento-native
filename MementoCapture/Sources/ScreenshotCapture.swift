@@ -1,11 +1,11 @@
 import Foundation
 import CoreGraphics
-import AppKit
 import ScreenCaptureKit
 
 /// Modern macOS screenshot capture using ScreenCaptureKit (macOS 14+)
 @available(macOS 14.0, *)
-class ScreenshotCapture {
+@MainActor
+final class ScreenshotCapture {
     
     private var hasWarnedAboutPermission = false
     private var hasLoggedDisplayInfo = false
@@ -15,21 +15,14 @@ class ScreenshotCapture {
         return CGPreflightScreenCaptureAccess()
     }
     
-    /// Open System Preferences to Screen Recording settings
-    static func openPermissionSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-    
     /// Capture the entire screen using ScreenCaptureKit
     /// Returns nil silently if permission not granted (no dialog triggered)
     func capture() async -> CGImage? {
         // Check permission FIRST - don't trigger dialog automatically
         if !ScreenshotCapture.hasPermission() {
             if !hasWarnedAboutPermission {
-                print("⚠️ Screen Recording permission not granted - capture disabled")
-                print("   Grant permission in: System Settings > Privacy & Security > Screen Recording")
+                AppLog.warning("⚠️ Screen Recording permission not granted - capture disabled")
+                AppLog.info("   Grant permission in: System Settings > Privacy & Security > Screen Recording")
                 hasWarnedAboutPermission = true
             }
             return nil
@@ -40,12 +33,12 @@ class ScreenshotCapture {
             
             // Debug: log available displays once
             if !hasLoggedDisplayInfo {
-                print("📺 Available displays: \(content.displays.count)")
+                AppLog.info("📺 Available displays: \(content.displays.count)")
                 for (i, display) in content.displays.enumerated() {
-                    print("   Display \(i): \(display.width)x\(display.height), ID: \(display.displayID)")
+                    AppLog.info("   Display \(i): \(display.width)x\(display.height), ID: \(display.displayID)")
                 }
-                print("🪟 Available windows: \(content.windows.count)")
-                print("📱 Available apps: \(content.applications.count)")
+                AppLog.info("🪟 Available windows: \(content.windows.count)")
+                AppLog.info("📱 Available apps: \(content.applications.count)")
                 hasLoggedDisplayInfo = true
             }
             
@@ -54,7 +47,7 @@ class ScreenshotCapture {
             let display = content.displays.first { $0.displayID == mainDisplayID } ?? content.displays.first
             
             guard let display = display else {
-                print("ERROR: No display found")
+                AppLog.error("No display found")
                 return nil
             }
             
@@ -77,47 +70,12 @@ class ScreenshotCapture {
             
             // Capture
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        return image
+            return image
             
         } catch {
-            print("ERROR: Screenshot capture failed: \(error.localizedDescription)")
+            AppLog.error("Screenshot capture failed: \(error.localizedDescription)")
             return nil
         }
     }
     
-    /// Capture at specific resolution
-    func capture(maxWidth: Int, maxHeight: Int) async -> CGImage? {
-        guard let fullImage = await capture() else { return nil }
-        
-        // Check if resize needed
-        if fullImage.width <= maxWidth && fullImage.height <= maxHeight {
-            return fullImage
-        }
-        
-        // Calculate scale
-        let scaleX = Double(maxWidth) / Double(fullImage.width)
-        let scaleY = Double(maxHeight) / Double(fullImage.height)
-        let scale = min(scaleX, scaleY)
-        
-        let newWidth = Int(Double(fullImage.width) * scale)
-        let newHeight = Int(Double(fullImage.height) * scale)
-        
-        // Create resized image
-        guard let context = CGContext(
-            data: nil,
-            width: newWidth,
-            height: newHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return fullImage
-        }
-        
-        context.interpolationQuality = .high
-        context.draw(fullImage, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
-        
-        return context.makeImage()
-    }
 }

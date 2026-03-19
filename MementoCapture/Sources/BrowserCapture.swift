@@ -2,7 +2,8 @@ import Foundation
 import AppKit
 
 /// Captures URL and tab title from browsers using AppleScript
-class BrowserCapture {
+@MainActor
+final class BrowserCapture {
     private static let delimiter = "|||"
     private static var lastAppleScriptErrorSignature: String?
     private static let privateKeywords = [
@@ -137,7 +138,7 @@ class BrowserCapture {
         if let error {
             let signature = error.description
             if lastAppleScriptErrorSignature != signature {
-                print("⚠️ Browser AppleScript failed: \(signature)")
+                AppLog.warning("⚠️ Browser AppleScript failed: \(signature)")
                 lastAppleScriptErrorSignature = signature
             }
             return nil

@@ -35,7 +35,6 @@ You can also use the in-app guide:
 
 ## Notes for this release
 
-- Search now loads full history for queries (not just recent window).
-- Older search hits now jump to valid screenshots more reliably.
-- Storage path changes migrate existing data automatically.
-
+- Capture scheduling is now stricter and avoids overlapping frame jobs.
+- Permission repair in Setup Hub now handles background task cancellation more safely.
+- Internal cleanup removed legacy/unused code paths and modernized Swift concurrency handling.

@@ -8,32 +8,18 @@ enum L {
     }()
     
     // MARK: - General
-    static var copied: String { isSwedish ? "Kopierat!" : "Copied!" }
     static var loading: String { isSwedish ? "Laddar..." : "Loading..." }
     static var noCapturesYet: String { isSwedish ? "Inga inspelningar än" : "No captures yet" }
-    static var of: String { isSwedish ? "av" : "of" }
+    static var readyToLoadFrame: String { isSwedish ? "Dra i tidslinjen eller sök för att ladda en frame" : "Drag the timeline or search to load a frame" }
     
     // MARK: - Top Bar
-    static var copyAllText: String { isSwedish ? "Kopiera ALL text" : "Copy ALL text" }
-    static var showText: String { isSwedish ? "Visa text" : "Show text" }
     static var firstFrameHelp: String { isSwedish ? "Första (Home)" : "First (Home)" }
     static var previousFrameHelp: String { isSwedish ? "Föregående (←)" : "Previous (←)" }
     static var nextFrameHelp: String { isSwedish ? "Nästa (→)" : "Next (→)" }
     static var lastFrameHelp: String { isSwedish ? "Sista (End)" : "Last (End)" }
-    static var searchHelp: String { isSwedish ? "Sök (⌘K)" : "Search (⌘K)" }
     static var commandPaletteHelp: String { isSwedish ? "Kommandopalett (⌘F)" : "Command palette (⌘F)" }
-    static var showTextHelp: String { isSwedish ? "Visa OCR-text (⌘T)" : "Show OCR text (⌘T)" }
-    static var copyTextHelp: String { isSwedish ? "Kopiera all text" : "Copy all text" }
     
     // MARK: - Controls
-    static var fitToWindow: String { isSwedish ? "Anpassa till fönster" : "Fit to window" }
-    static var zoomIn: String { isSwedish ? "Zooma in" : "Zoom in" }
-    static var zoomOut: String { isSwedish ? "Zooma ut" : "Zoom out" }
-    static var resetZoom: String { isSwedish ? "Återställ zoom (100%)" : "Reset zoom (100%)" }
-    static var selectToCopy: String { isSwedish ? "Markera → Kopiera" : "Select → Copy" }
-    static var selectToCopyHelp: String { isSwedish ? "Markera text i bilden för att kopiera" : "Select text in the image to copy" }
-    static var zoomToSelect: String { isSwedish ? "Zooma för att markera" : "Zoom to select" }
-    static var zoomToSelectHelp: String { isSwedish ? "Zooma in till 100% för att markera text" : "Zoom in to 100% to select text" }
     
     // MARK: - Search
     static var text: String { "Text" }
@@ -73,19 +59,10 @@ enum L {
     static var commandNoActions: String { isSwedish ? "Inga kommandon för denna sökning" : "No commands for this query" }
     static var commandOpenSearch: String { isSwedish ? "Öppna sökpanelen" : "Open search panel" }
     static var commandOpenSearchSubtitle: String { isSwedish ? "Fokusera sök och börja skriva" : "Focus search and start typing" }
-    static var commandShowTextPanel: String { isSwedish ? "Visa textpanel" : "Show text panel" }
-    static var commandHideTextPanel: String { isSwedish ? "Dölj textpanel" : "Hide text panel" }
-    static var commandTextPanelSubtitle: String { isSwedish ? "Visa OCR-text för aktuell frame" : "Show OCR text for current frame" }
     static var commandUseSemantic: String { isSwedish ? "Använd semantisk sökning" : "Use semantic search" }
     static var commandUseTextSearch: String { isSwedish ? "Använd textsökning" : "Use text search" }
     static var commandSearchModeSubtitle: String { isSwedish ? "Byt standardsökning" : "Switch default search mode" }
     static var commandJumpToTimeSubtitle: String { isSwedish ? "Hoppar till närmaste tid i historiken" : "Jumps to the closest time in loaded history" }
-    static var commandRecentMatchSubtitle: String { isSwedish ? "Öppna tidigare vald träff" : "Open a previously selected match" }
-    
-    // MARK: - Text Overlay
-    static var textFromScreenshot: String { isSwedish ? "Text från skärmbild" : "Text from screenshot" }
-    static var copyAll: String { isSwedish ? "Kopiera allt" : "Copy all" }
-    static var noTextFound: String { isSwedish ? "Ingen text hittad" : "No text found" }
 
     // MARK: - App Menu
     static var timelineMenu: String { isSwedish ? "Tidslinje" : "Timeline" }

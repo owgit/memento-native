@@ -1,14 +1,12 @@
 import Foundation
 import AppKit
-import Vision
-import AVFoundation
 import CoreGraphics
 import Combine
 
 /// Main capture service - captures screenshots, performs OCR, stores results
 @available(macOS 14.0, *)
 @MainActor
-class CaptureService {
+final class CaptureService {
     static let shared = CaptureService()
     private static let iso8601Formatter = ISO8601DateFormatter()
     
@@ -19,79 +17,67 @@ class CaptureService {
     // State
     private var frameCount = 0
     private var timer: Timer?
+    private var captureTask: Task<Void, Never>?
+    private var captureInFlight = false
     private var previousImage: CGImage?
     private var highMotionMediaStreak = 0
     private var videoPauseUntil: Date?
     private var pausedVideoBundleId: String?
     private(set) var lastSuccessfulCaptureAt: Date?
     private var settingsObservation: AnyCancellable?
+    private var hasPreparedCaptureResources = false
     
     // Components
     private let screenshotCapture = ScreenshotCapture()
-    private let ocrEngine = VisionOCR()
-    private var videoEncoder: VideoEncoder
-    private var database: Database
-    private let embeddingService = EmbeddingService()
+    private lazy var ocrEngine = VisionOCR()
+    private var videoEncoder: VideoEncoder?
+    private var database: Database?
+    private lazy var embeddingService = EmbeddingService()
     
     // Paths
     private(set) var cachePath: URL
     
     private init() {
-        // Setup cache path from settings
         cachePath = Settings.shared.storageURL
-        let frameDuration = Settings.shared.captureInterval
-        
-        // Create cache directory
-        try? FileManager.default.createDirectory(at: cachePath, withIntermediateDirectories: true)
-        
-        // Initialize components
-        database = Database(path: cachePath.appendingPathComponent("memento.db").path)
-        videoEncoder = VideoEncoder(
-            outputDirectory: cachePath,
-            framesPerVideo: framesPerVideo,
-            frameDuration: frameDuration
-        )
-        
-        // Continue from last frame
-        frameCount = database.getMaxFrameId() + 1
-        
-        print("📁 Cache path: \(cachePath.path)")
-        print("📊 Continuing from frame \(frameCount)")
-        
-        // Start video with frame_id as name
-        videoEncoder.startNewVideo(index: frameCount)
         observeSettings()
     }
     
     func start() {
         guard timer == nil else { return }
+        prepareCaptureResourcesIfNeeded()
 
-        print("▶️  Starting capture service...")
-        print("   Interval: \(captureInterval)s")
-        print("   Resolution: Auto-detect")
+        AppLog.info("▶️  Starting capture service...")
+        AppLog.info("   Interval: \(captureInterval)s")
+        AppLog.info("   Resolution: Auto-detect")
 
         applyRetentionPolicyIfNeeded()
         
         scheduleCaptureTimer()
-        
+
         // Fire immediately
-        Task {
-            await captureFrame()
-        }
+        enqueueCaptureIfNeeded()
     }
     
     func stop() async {
-        print("⏹️  Stopping capture service...")
+        AppLog.info("⏹️  Stopping capture service...")
         timer?.invalidate()
         timer = nil
+
+        if let captureTask {
+            captureTask.cancel()
+            self.captureTask = nil
+            await captureTask.value
+        }
+
         previousImage = nil  // Release memory
         highMotionMediaStreak = 0
         videoPauseUntil = nil
         pausedVideoBundleId = nil
         do {
-            try await videoEncoder.finalize()
+            try await videoEncoder?.finalize()
+            rebuildVideoEncoder(frameDuration: captureInterval)
         } catch {
-            print("⚠️ Failed to finalize video during stop: \(error.localizedDescription)")
+            AppLog.warning("⚠️ Failed to finalize video during stop: \(error.localizedDescription)")
             rebuildVideoEncoder(frameDuration: captureInterval)
         }
     }
@@ -107,7 +93,12 @@ class CaptureService {
         }
 
         // Close DB before migrating files so WAL/shm can move cleanly.
-        database.close()
+        let hadPreparedResources = hasPreparedCaptureResources
+        database?.close()
+        database = nil
+        videoEncoder = nil
+        hasPreparedCaptureResources = false
+        frameCount = 0
 
         do {
             try FileManager.default.createDirectory(at: normalizedPath, withIntermediateDirectories: true)
@@ -116,13 +107,10 @@ class CaptureService {
             }.value
 
             cachePath = normalizedPath
-            database = Database(path: cachePath.appendingPathComponent("memento.db").path)
-            frameCount = database.getMaxFrameId() + 1
-            rebuildVideoEncoder(frameDuration: captureInterval)
 
-            print("📦 Storage migrated to: \(cachePath.path)")
+            AppLog.info("📦 Storage migrated to: \(cachePath.path)")
             if migrationResult.movedItems > 0 || migrationResult.copiedItems > 0 || migrationResult.conflictRenames > 0 {
-                print("   moved: \(migrationResult.movedItems), copied: \(migrationResult.copiedItems), renamed conflicts: \(migrationResult.conflictRenames), skipped: \(migrationResult.skippedItems)")
+                AppLog.info("   moved: \(migrationResult.movedItems), copied: \(migrationResult.copiedItems), renamed conflicts: \(migrationResult.conflictRenames), skipped: \(migrationResult.skippedItems)")
             }
 
             if wasRunning {
@@ -132,9 +120,9 @@ class CaptureService {
             return migrationResult
         } catch {
             cachePath = currentPath
-            database = Database(path: currentPath.appendingPathComponent("memento.db").path)
-            frameCount = database.getMaxFrameId() + 1
-            rebuildVideoEncoder(frameDuration: captureInterval)
+            if hadPreparedResources {
+                prepareCaptureResourcesIfNeeded()
+            }
 
             if wasRunning {
                 start()
@@ -145,6 +133,10 @@ class CaptureService {
     }
     
     private func captureFrame() async {
+        guard !captureInFlight else { return }
+        captureInFlight = true
+        defer { captureInFlight = false }
+
         let startTime = Date()
         
         // Get active app info
@@ -153,13 +145,13 @@ class CaptureService {
         
         // Skip capture when Timeline app is open (saves resources)
         if appBundleId == "com.memento.timeline" || activeApp == "Memento Timeline" || activeApp == "MementoTimeline" {
-            print("⏸️  Skipping capture - Timeline app is active")
+            AppLog.info("⏸️  Skipping capture - Timeline app is active")
             return
         }
         
         // Skip capture when screen is locked or screensaver is active
         if isScreenLocked() {
-            print("🔒 Skipping capture - Screen locked or screensaver active")
+            AppLog.info("🔒 Skipping capture - Screen locked or screensaver active")
             return
         }
 
@@ -181,7 +173,7 @@ class CaptureService {
             highMotionMediaStreak = 0
             videoPauseUntil = nil
             pausedVideoBundleId = nil
-            print("🕶️  Skipping capture - Private/incognito browsing detected")
+            AppLog.info("🕶️  Skipping capture - Private/incognito browsing detected")
             return
         }
         
@@ -190,7 +182,7 @@ class CaptureService {
         
         // Capture screenshot using ScreenCaptureKit
         guard let screenshot = await screenshotCapture.capture() else {
-            print("⚠️  Failed to capture screenshot")
+            AppLog.warning("⚠️  Failed to capture screenshot")
             return
         }
         
@@ -202,7 +194,7 @@ class CaptureService {
             diffScore = diff
             shouldOCR = diff > 0.02  // OCR if >2% change (was 50% - too aggressive)
             if !shouldOCR {
-                print("⏭️  Frame \(frameCount): skipped (diff: \(String(format: "%.2f", diff)))")
+                AppLog.info("⏭️  Frame \(frameCount): skipped (diff: \(String(format: "%.2f", diff)))")
             }
         } else {
             diffScore = 0
@@ -234,6 +226,11 @@ class CaptureService {
         
         // Get app category from system
         let appCategory = getAppCategory(bundleId: appBundleId)
+
+        guard let database else {
+            AppLog.warning("⚠️ Database unavailable; skipping frame persistence")
+            return
+        }
         
         // Store in database with extended metadata
         guard database.insertFrame(
@@ -247,7 +244,7 @@ class CaptureService {
             clipboard: clipboardContent,
             appCategory: appCategory
         ) else {
-            print("⚠️ Failed to persist frame \(frameCount); skipping encoder write")
+            AppLog.warning("⚠️ Failed to persist frame \(frameCount); skipping encoder write")
             return
         }
         
@@ -271,16 +268,20 @@ class CaptureService {
                 language: embedding.language.rawValue,
                 revision: embedding.revision
             ) {
-                print("⚠️ Failed to persist embedding for frame \(frameCount)")
+                AppLog.warning("⚠️ Failed to persist embedding for frame \(frameCount)")
             }
         }
         
         // Add to video encoder
+        guard let videoEncoder else {
+            AppLog.warning("⚠️ Video encoder unavailable; skipping frame encoding")
+            return
+        }
         let shouldRotateVideo: Bool
         do {
             shouldRotateVideo = try videoEncoder.addFrame(screenshot)
         } catch {
-            print("⚠️ Video encoding failed for frame \(frameCount): \(error.localizedDescription)")
+            AppLog.warning("⚠️ Video encoding failed for frame \(frameCount): \(error.localizedDescription)")
             frameCount += 1
             rebuildVideoEncoder(frameDuration: captureInterval)
             return
@@ -288,7 +289,7 @@ class CaptureService {
         
         // Log
         let elapsed = Date().timeIntervalSince(startTime)
-        print("📸 Frame \(frameCount): \(ocrResults.count) texts, \(String(format: "%.2f", elapsed))s, app: \(activeApp)")
+        AppLog.info("📸 Frame \(frameCount): \(ocrResults.count) texts, \(String(format: "%.2f", elapsed))s, app: \(activeApp)")
         lastSuccessfulCaptureAt = Date()
         
         frameCount += 1
@@ -299,7 +300,7 @@ class CaptureService {
                 // Use frame_id as video name so Timeline can map correctly
                 videoEncoder.startNewVideo(index: frameCount)
             } catch {
-                print("⚠️ Video finalize failed after frame \(frameCount - 1): \(error.localizedDescription)")
+                AppLog.warning("⚠️ Video finalize failed after frame \(frameCount - 1): \(error.localizedDescription)")
                 rebuildVideoEncoder(frameDuration: captureInterval)
             }
         }
@@ -353,7 +354,7 @@ class CaptureService {
 
         if idleSeconds >= Settings.shared.idleThresholdSeconds {
             highMotionMediaStreak = 0
-            print("😴 Skipping capture - User idle (\(Int(idleSeconds))s)")
+            AppLog.info("😴 Skipping capture - User idle (\(Int(idleSeconds))s)")
             return true
         }
         return false
@@ -390,7 +391,7 @@ class CaptureService {
         }
 
         let remaining = max(1, Int(pauseUntil.timeIntervalSinceNow.rounded()))
-        print("🎬 Skipping capture - Video playback detected (\(remaining)s left)")
+        AppLog.info("🎬 Skipping capture - Video playback detected (\(remaining)s left)")
         return true
     }
 
@@ -424,7 +425,7 @@ class CaptureService {
         let pauseSeconds: TimeInterval = 30
         videoPauseUntil = Date().addingTimeInterval(pauseSeconds)
         pausedVideoBundleId = bundleId
-        print("🎬 Skipping capture - Likely video/streaming detected (\(Int(pauseSeconds))s)")
+        AppLog.info("🎬 Skipping capture - Likely video/streaming detected (\(Int(pauseSeconds))s)")
         return true
     }
 
@@ -507,21 +508,58 @@ class CaptureService {
         return diffSum / Double(samples * 255)
     }
 
+    private func enqueueCaptureIfNeeded() {
+        guard captureTask == nil else { return }
+        captureTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.captureFrame()
+            self.captureTask = nil
+        }
+    }
+
     private func scheduleCaptureTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                await self?.captureFrame()
+                self?.enqueueCaptureIfNeeded()
             }
         }
     }
 
-    private func rebuildVideoEncoder(frameDuration: TimeInterval) {
-        videoEncoder = VideoEncoder(
+    private func prepareCaptureResourcesIfNeeded() {
+        guard !hasPreparedCaptureResources else { return }
+
+        let frameDuration = Settings.shared.captureInterval
+        try? FileManager.default.createDirectory(at: cachePath, withIntermediateDirectories: true)
+
+        let databasePath = cachePath.appendingPathComponent("memento.db").path
+        let database = Database(path: databasePath)
+        let videoEncoder = VideoEncoder(
             outputDirectory: cachePath,
             framesPerVideo: framesPerVideo,
             frameDuration: frameDuration
         )
+
+        frameCount = database.getMaxFrameId() + 1
+        self.database = database
+        self.videoEncoder = videoEncoder
+        hasPreparedCaptureResources = true
+
+        AppLog.info("📁 Cache path: \(cachePath.path)")
+        AppLog.info("📊 Continuing from frame \(frameCount)")
+
         videoEncoder.startNewVideo(index: frameCount)
+    }
+
+    private func rebuildVideoEncoder(frameDuration: TimeInterval) {
+        guard hasPreparedCaptureResources else { return }
+
+        let encoder = VideoEncoder(
+            outputDirectory: cachePath,
+            framesPerVideo: framesPerVideo,
+            frameDuration: frameDuration
+        )
+        encoder.startNewVideo(index: frameCount)
+        videoEncoder = encoder
     }
 
     private func observeSettings() {
@@ -540,16 +578,22 @@ class CaptureService {
         timer?.invalidate()
         timer = nil
 
+        if let captureTask {
+            captureTask.cancel()
+            self.captureTask = nil
+            await captureTask.value
+        }
+
         do {
-            try await videoEncoder.finalize()
+            try await videoEncoder?.finalize()
         } catch {
-            print("⚠️ Failed to finalize video before applying new interval: \(error.localizedDescription)")
+            AppLog.warning("⚠️ Failed to finalize video before applying new interval: \(error.localizedDescription)")
         }
 
         rebuildVideoEncoder(frameDuration: newInterval)
 
         if wasRunning {
-            print("🔄 Applying new capture interval: \(newInterval)s")
+            AppLog.info("🔄 Applying new capture interval: \(newInterval)s")
             scheduleCaptureTimer()
         }
     }
@@ -587,7 +631,7 @@ class CaptureService {
             )
 
             if result.deletedFrames > 0 || result.deletedVideos > 0 {
-                print("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
+                AppLog.info("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
             }
         }
     }
@@ -694,5 +738,4 @@ struct TextBlock {
     let y: Int
     let width: Int
     let height: Int
-    let confidence: Float
 }

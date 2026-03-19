@@ -3,7 +3,8 @@ import Vision
 import CoreGraphics
 
 /// Apple Vision-based OCR engine
-class VisionOCR {
+@MainActor
+final class VisionOCR {
     
     private let recognitionLevel: VNRequestTextRecognitionLevel
     private let minimumConfidence: Float
@@ -11,7 +12,7 @@ class VisionOCR {
     init(recognitionLevel: VNRequestTextRecognitionLevel = .fast, minimumConfidence: Float = 0.4) {
         self.recognitionLevel = recognitionLevel
         self.minimumConfidence = minimumConfidence
-        print("🍎 Vision OCR initialized (level: \(recognitionLevel == .fast ? "fast" : "accurate"))")
+        AppLog.info("🍎 Vision OCR initialized (level: \(recognitionLevel == .fast ? "fast" : "accurate"))")
     }
     
     /// Recognize text in image
@@ -58,8 +59,7 @@ class VisionOCR {
                     x: max(0, x),
                     y: max(0, y),
                     width: max(1, w),
-                    height: max(1, h),
-                    confidence: observation.confidence
+                    height: max(1, h)
                 ))
             }
             
@@ -74,7 +74,7 @@ class VisionOCR {
         do {
             try handler.perform([request])
         } catch {
-            print("⚠️ Vision OCR error: \(error)")
+            AppLog.warning("⚠️ Vision OCR error: \(error)")
             completion([])
         }
     }

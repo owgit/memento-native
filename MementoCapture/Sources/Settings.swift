@@ -2,7 +2,7 @@ import Foundation
 
 /// App settings stored in UserDefaults
 @MainActor
-class Settings: ObservableObject {
+final class Settings: ObservableObject {
     static let shared = Settings()
     
     private let defaults = UserDefaults.standard
@@ -112,11 +112,11 @@ class Settings: ObservableObject {
             )
             
             (plist as NSDictionary).write(to: launchAgentPath, atomically: true)
-            print("✅ LaunchAgent created")
+            AppLog.info("✅ LaunchAgent created")
         } else {
             // Remove LaunchAgent
             try? FileManager.default.removeItem(at: launchAgentPath)
-            print("✅ LaunchAgent removed")
+            AppLog.info("✅ LaunchAgent removed")
         }
     }
     
