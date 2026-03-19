@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Action Hub search">
+  <rect width="1200" height="640" fill="#111827" />
+  <text x="64" y="90" font-family="Arial, sans-serif" font-size="42" fill="#f9fafb" font-weight="700">Action Hub Search</text>
+  <text x="64" y="130" font-family="Arial, sans-serif" font-size="22" fill="#9ca3af">Keyword + semantic search with keyboard flow</text>
+  <rect x="64" y="190" width="1072" height="74" rx="14" fill="#1f2937" stroke="#374151" />
+  <text x="92" y="238" font-family="Arial, sans-serif" font-size="24" fill="#d1d5db">Search your timeline...</text>
+  <rect x="64" y="300" width="320" height="56" rx="28" fill="#2563eb" />
+  <text x="164" y="337" font-family="Arial, sans-serif" font-size="22" fill="#ffffff">Text</text>
+  <rect x="396" y="300" width="320" height="56" rx="28" fill="#7c3aed" />
+  <text x="482" y="337" font-family="Arial, sans-serif" font-size="22" fill="#ffffff">Semantic</text>
+  <rect x="64" y="390" width="1072" height="190" rx="14" fill="#0b1220" stroke="#1f2937" />
+  <text x="92" y="438" font-family="Arial, sans-serif" font-size="22" fill="#f3f4f6">Result: "API migration guide"</text>
+  <text x="92" y="475" font-family="Arial, sans-serif" font-size="18" fill="#9ca3af">Open selected with Enter, navigate with arrow keys.</text>
+</svg>

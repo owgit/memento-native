@@ -38,3 +38,7 @@ You can also use the in-app guide:
 - Capture scheduling is now stricter and avoids overlapping frame jobs.
 - Permission repair in Setup Hub now handles background task cancellation more safely.
 - Internal cleanup removed legacy/unused code paths and modernized Swift concurrency handling.
+
+## Need more context?
+
+- FAQ (permissions, updater behavior, storage): [docs/FAQ.md](docs/FAQ.md)

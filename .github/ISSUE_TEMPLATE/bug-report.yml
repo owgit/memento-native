@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible bug in Capture, Timeline, or updater
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please include a reproducible case.
+
+  - type: input
+    id: version
+    attributes:
+      label: Memento version
+      placeholder: v2.0.4
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 14.6
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps from clean start to issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs/screenshots
+      description: Paste logs and attach screenshots if relevant

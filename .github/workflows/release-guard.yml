@@ -1,0 +1,90 @@
+name: Release Guard
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to validate (example: v2.0.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+          else
+            tag="${{ inputs.tag }}"
+          fi
+
+          if [ -z "$tag" ]; then
+            echo "ERROR: Missing release tag."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Validate changelog, README and release asset
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          failed=0
+          expected_dmg="Memento-Native-${VERSION}.dmg"
+
+          echo "Validating tag: $TAG"
+          echo "Expected DMG: $expected_dmg"
+
+          if ! grep -Fq "## [${VERSION}] - " CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md missing entry for ${VERSION}."
+            echo "Fix: add header: ## [${VERSION}] - YYYY-MM-DD"
+            failed=1
+          fi
+
+          if ! grep -Fq "## Latest (v${VERSION})" README.md; then
+            echo "ERROR: README Latest section does not match v${VERSION}."
+            echo "Fix: update README heading to: ## Latest (v${VERSION})"
+            failed=1
+          fi
+
+          release_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}/repos/${REPO}/releases/tags/${TAG}")" || {
+              echo "ERROR: Could not fetch release metadata for ${TAG}."
+              echo "Fix: ensure tag exists and release is published."
+              exit 1
+            }
+
+          if ! echo "$release_json" | jq -e --arg expected "$expected_dmg" '.assets[].name | select(. == $expected)' >/dev/null; then
+            echo "ERROR: Release ${TAG} is missing asset ${expected_dmg}."
+            echo "Fix: gh release upload ${TAG} dist/${expected_dmg} --clobber"
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo "Release Guard failed. See errors above."
+            exit 1
+          fi
+
+          echo "Release Guard passed for ${TAG}."

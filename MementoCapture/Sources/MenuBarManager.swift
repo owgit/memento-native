@@ -27,6 +27,7 @@ final class MenuBarManager {
     private let automaticUpdateCheckInterval: TimeInterval = 30 * 24 * 60 * 60
     private let updateAPIURL = URL(string: "https://api.github.com/repos/owgit/memento-native/releases/latest")!
     private let fallbackReleaseURL = URL(string: "https://github.com/owgit/memento-native/releases/latest")!
+    private let faqURL = URL(string: "https://github.com/owgit/memento-native/blob/main/docs/FAQ.md")!
     private let lastNotifiedUpdateVersionKey = "lastNotifiedUpdateVersion"
     private let lastAutomaticUpdateCheckAtKey = "lastAutomaticUpdateCheckAt"
     
@@ -765,22 +766,36 @@ final class MenuBarManager {
 
         /usr/bin/open -n "$APP_PATH" >/dev/null 2>&1 || {
             /bin/sleep 2
-            /usr/bin/open -n "$APP_PATH" >/dev/null 2>&1
+            /usr/bin/open "$APP_PATH" >/dev/null 2>&1
         }
         """
 
+        var didScheduleRelaunch = false
         do {
             try script.write(to: scriptURL, atomically: true, encoding: .utf8)
             try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
 
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [scriptURL.path]
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+            process.arguments = ["/bin/bash", scriptURL.path]
             process.standardOutput = nil
             process.standardError = nil
             try process.run()
+            didScheduleRelaunch = true
         } catch {
             AppLog.warning("⚠️ Failed to schedule relaunch: \(error)")
+        }
+
+        guard didScheduleRelaunch else {
+            let alert = NSAlert()
+            alert.messageText = L.errorTitle
+            alert.informativeText = L.isSwedish
+                ? "Kunde inte starta om appen automatiskt. Starta om manuellt från /Applications."
+                : "Could not restart the app automatically. Please restart it manually from /Applications."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L.ok)
+            alert.runModal()
+            return
         }
 
         NSApp.terminate(nil)
@@ -792,10 +807,14 @@ final class MenuBarManager {
         alert.informativeText = L.updateInstallFailedMessage + "\n\n\(error.localizedDescription)"
         alert.alertStyle = .warning
         alert.addButton(withTitle: L.openReleasePage)
+        alert.addButton(withTitle: L.openFAQ)
         alert.addButton(withTitle: L.ok)
 
-        if alert.runModal() == .alertFirstButtonReturn {
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
             NSWorkspace.shared.open(releaseURL)
+        } else if response == .alertSecondButtonReturn {
+            NSWorkspace.shared.open(faqURL)
         }
     }
 

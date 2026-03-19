@@ -1,181 +1,208 @@
 # Memento Native
 
-**Your Mac's photographic memory** — automatically records your screen and lets you search anything you've seen.
+**Your Mac's photographic memory** for **local-first timeline memory**, **OCR search**, and **semantic search**.
 
-Ever closed a tab and forgot the URL? Lost an important message? Can't remember where you saw that code snippet? Memento captures your screen continuously, extracts all text using OCR, and makes it searchable. Everything stays 100% local on your Mac.
+Memento Native continuously captures your screen on macOS, extracts text with OCR, and lets you search by keyword or meaning. Data stays on your machine.
 
-[![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
+Privacy-first by design: local storage, no cloud dependency, and user-controlled pause behavior.
+
+[![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
 [![License](https://img.shields.io/badge/License-PolyForm%20NC-blue.svg)](LICENSE)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/uygarduzgun)
+[![Releases](https://img.shields.io/github/v/release/owgit/memento-native)](https://github.com/owgit/memento-native/releases)
 
-> Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento). Open-source alternative to Rewind.ai.
+> Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento).
+
+Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Troubleshooting](docs/FAQ.md#troubleshooting--felsokning) • [Security](SECURITY.md) • [Contributing](CONTRIBUTING.md) • [Releases](https://github.com/owgit/memento-native/releases)
+
+## Table of Contents
+
+- [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
+- [Who It's For / För Vem?](#who-its-for--for-vem)
+- [Visual Overview](#visual-overview)
+- [Latest (v2.0.4)](#latest-v204)
+- [Install](#install)
+- [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
+- [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
+- [Trust and Privacy by Design / Tillit och Integritet i Designen](#trust-and-privacy-by-design--tillit-och-integritet-i-designen)
+- [FAQ](#faq)
+- [Contributing and Support](#contributing-and-support)
+- [Release Quality and Update Reliability](#release-quality-and-update-reliability)
+- [Architecture Snapshot](#architecture-snapshot)
+- [Privacy and Security](#privacy-and-security)
+- [License](#license)
+
+## What Is Memento Native? / Vad Är Memento Native?
+
+**EN:** Memento Native is a macOS screen memory tool built with Swift, ScreenCaptureKit, Vision OCR, SQLite FTS5, and on-device semantic embeddings. You can jump back in time and find what you saw.
+
+**SV:** Memento Native är ett macOS-verktyg för skärmminne byggt i Swift. Du kan gå tillbaka i tiden och hitta det du sett via OCR- och semantisk sökning.
+
+## Who It's For / För Vem?
+
+- Developers who need searchable visual history during debugging
+- Founders and operators who jump between browser tabs, docs, and chats
+- Researchers and students who need recall without cloud sync
+- Privacy-focused users who want local-only timeline memory
+
+## Visual Overview
+
+![Memento capture overview: local macOS OCR and timeline memory](docs/assets/capture-overview.svg)
+
+![Action Hub search experience with keyword and semantic modes](docs/assets/action-hub-search.svg)
+
+![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
 ## Latest (v2.0.4)
 
-- Swift 6 migration and concurrency hardening for both Capture and Timeline
-- Capture service now prevents overlapping frame capture jobs
-- Setup Hub permission repair flow now tracks/cancels repair tasks cleanly
-- Dead-code cleanup across database/search/embedding/onboarding paths
-- Unified `OSLog` logging wrappers and cleaner runtime diagnostics
-- Shared helpers for app version and storage metrics to reduce duplicated logic
+- Swift 6 migration and concurrency hardening across Capture and Timeline
+- Safer capture scheduling (no overlapping frame jobs)
+- Better permission repair lifecycle in Setup Hub
+- Dead code cleanup and clearer runtime logging
 
-## Use Cases
+Release references:
+- Changelog entry: [v2.0.4 in CHANGELOG](CHANGELOG.md#204---2026-03-19)
+- Release page: [v2.0.4 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.4)
 
-- 🔍 **Find by keyword** — Search "invoice", "meeting", "password"
-- 💬 **Recover lost text** — Find that message or email you closed
-- 🐛 **Debug timeline** — Scroll back to see what happened
-- 🧠 **Semantic search** — Find "coding tutorial" even if text says "programming lesson"
-- 📋 **Visual history** — Browse your screen activity by time
+## Install
 
-## Features
+### Option 1: DMG (recommended)
 
-| Feature | Description |
-|---------|-------------|
-| 📸 Screen Recording | ScreenCaptureKit (macOS 14+) |
-| 🔍 OCR Search | Apple Vision text recognition |
-| 🧠 Semantic Search | Find by meaning, not just keywords |
-| ⌨️ Action Hub | Command palette (`⌘F`) for actions and fast search |
-| 🛠️ Setup Hub | Unified onboarding + permission repair flow |
-| 🎛️ Menubar Control Center | Recording/paused, permission, last-capture status chips |
-| ⏸️ Smart Auto-Pause | Pause when idle, during video/streaming playback, and in private/incognito browser windows |
-| 🎨 App Learning | Auto color-codes apps in timeline |
-| 📹 H.264 Video | Hardware-accelerated encoding |
-| 💾 Full-Text Search | SQLite FTS5 |
-| ⚡ Lightweight | ~1% RAM, minimal CPU |
-| 🔒 Privacy-First | No cloud, no telemetry |
-
-## Installation
-
-### Option 1: DMG (Recommended)
-
-Download the latest DMG from [Releases](https://github.com/owgit/memento-native/releases), open it, and drag both apps to Applications.
+1. Download latest DMG from [Releases](https://github.com/owgit/memento-native/releases).
+2. Move both apps to `/Applications`:
+   - `Memento Capture.app`
+   - `Memento Timeline.app`
+3. Start `Memento Capture` first.
 
 ### Option 2: Build from source
 
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
-./build-dmg.sh 2.0.4  # Creates dist/Memento-Native-2.0.4.dmg
-# Or build individually:
-cd MementoCapture && ./bundle.sh
-cd ../MementoTimeline && ./bundle.sh
+./build-dmg.sh 2.0.4
 ```
 
-## Updating
+## Permissions and Why This Is Needed / Behörigheter och Varför
 
-If you're updating from an older version, follow the release update steps in [UPDATING.md](UPDATING.md).
+**Screen Recording** is required to capture on-screen content.
 
-Quick summary:
+**Automation (Apple Events)** is required for browser URL/title indexing (Safari/Chrome/Arc/Edge/Brave/Firefox), so search results can include context.
 
-1. Quit both apps
-2. Replace both apps in `/Applications`
-3. Start `Memento Capture` first
-4. Re-check Screen Recording permission if macOS asks
-5. If capture still fails, open **Setup Hub** from the menu bar and run **Repair Permissions**
+**EN:** Without these permissions, capture/search quality degrades.
 
-## Setup Permissions
+**SV:** Utan dessa behörigheter blir inspelning/sökning begränsad.
 
-1. Open `/Applications/Memento Capture.app`
-2. Follow **Setup Hub** prompts (recommended)
-3. If needed, use **Fix/Repair Permissions** in Setup Hub
-4. Allow **Automation** access for `Memento Capture` if macOS asks to control Safari/Chrome/Arc/Edge/Brave/Firefox for URL capture
-5. Manual fallback: **System Settings** → **Privacy & Security** → **Screen Recording** and enable `Memento Capture`
+Details and rationale: [docs/FAQ.md](docs/FAQ.md)
 
-You can re-open Setup Hub anytime from the menu bar app.
+## Settings and Tradeoffs / Inställningar och Kompromisser
 
-## When Capture Pauses Automatically
+Configuration reference: [docs/SETTINGS.md](docs/SETTINGS.md)
 
-Capture pauses automatically in these cases:
+Highlights:
+- Capture interval is configurable (`1s`, `2s`, `3s`, `5s`, `10s`) with clear quality/performance tradeoffs.
+- Auto-pause includes idle, video/streaming, and private/incognito detection.
+- You can manually toggle recording mode (`Recording` / `Paused`) in the menu bar Control Center.
 
-- The screen is locked or the screen saver is active
-- You are idle (default 90 seconds, configurable in Settings)
-- Video/streaming playback is detected (motion + media context)
-- A private/incognito browser window is active (Chrome/Arc/Brave/Edge/Safari/Firefox best-effort detection)
-- `Memento Timeline` is the frontmost app
+## Trust and Privacy by Design / Tillit och Integritet i Designen
 
-## Keyboard Shortcuts (Timeline)
+**EN:** Memento is built to make behavior predictable and user-controlled:
+- Data stays local on your Mac by default (`~/.cache/memento`)
+- No cloud backend is required for capture/search
+- Private/incognito windows trigger automatic pause (best-effort detection)
+- You can pause/resume instantly from the menu bar
+- Capture interval and retention are configurable so you control detail vs resource usage
 
-- `⌘F` — Open Action Hub (Command Palette)
-- `⌘K` — Open direct Search panel
-- `⌘T` — Toggle OCR text panel
-- `←` / `→` — Previous / next frame
-- `Home` / `End` — First / last frame
+**SV:** Memento är byggd för förutsägbart beteende och användarkontroll:
+- Data stannar lokalt på din Mac som standard (`~/.cache/memento`)
+- Ingen molntjänst krävs för inspelning/sökning
+- Privata/inkognito-fönster triggar automatisk paus (best-effort-detektering)
+- Du kan pausa/återuppta direkt från menyraden
+- Capture-intervall och retention kan justeras så du styr detaljgrad vs resursanvändning
 
-## Requirements
+**EN trust signals:**
+- Permission requests are explained in plain language (what/why/impact)
+- Privacy-safe defaults are enabled (for example, private/incognito auto-pause)
+- User control is immediate (manual pause/resume + retention controls)
+- Release quality is transparent (public changelog + reproducible release assets)
 
-| Requirement | Details |
-|-------------|---------|
-| **macOS** | 14.0 Sonoma or later |
-| **Mac** | Apple Silicon (M1/M2/M3) or Intel Mac |
-| **RAM** | 8GB minimum |
-| **Disk** | ~150MB/hour of recording |
-| **Permission** | Screen Recording |
+**SV tillitssignaler:**
+- Behörighetsförfrågningar förklaras enkelt (vad/varför/påverkan)
+- Integritetssäkra standardval är påslagna (t.ex. privat/inkognito auto-paus)
+- Användarkontroll är direkt (manuell paus/återuppta + retention-kontroll)
+- Releasekvalitet är transparent (publik changelog + reproducerbara release-assets)
 
-## Performance
+Read more:
+- [FAQ](docs/FAQ.md)
+- [Settings Guide](docs/SETTINGS.md)
+- [Security Policy](SECURITY.md)
 
-| Metric | Value |
-|--------|-------|
-| **CPU** | ~1-3% (idle between captures) |
-| **RAM** | ~50-100MB |
-| **Capture interval** | Default 2 seconds (configurable) |
-| **Video codec** | H.264 hardware-accelerated |
+## FAQ
 
-## How It Works
+Short answers (full version in [docs/FAQ.md](docs/FAQ.md)):
 
+- Why does Memento need Screen Recording?
+- Why does browser access need Automation permission?
+- Why does capture pause sometimes?
+- Can I pause/resume manually, and does incognito trigger pause?
+- Why can auto-update ask for admin password?
+- Where is data stored and how do I delete it?
+- Why did I only see "Open release page" instead of "Install now"?
+
+## Contributing and Support
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+- Support routing: [SUPPORT.md](SUPPORT.md)
+- Repository settings checklist: [docs/REPO_SETTINGS.md](docs/REPO_SETTINGS.md)
+
+Routing policy:
+- **Questions, ideas, troubleshooting:** [GitHub Discussions](https://github.com/owgit/memento-native/discussions)
+- **Confirmed bugs and scoped feature work:** [GitHub Issues](https://github.com/owgit/memento-native/issues)
+
+Recommended Discussions categories:
+- `Q&A`
+- `Ideas`
+- `Troubleshooting`
+- `Announcements`
+
+## Release Quality and Update Reliability
+
+Release process and policy:
+- [docs/RELEASING.md](docs/RELEASING.md)
+- [CHANGELOG.md](CHANGELOG.md)
+
+A release must include a DMG asset named:
+
+`Memento-Native-<version>.dmg`
+
+If the DMG asset is missing, in-app updater falls back to **Open release page**.
+
+## Architecture Snapshot
+
+```text
+MementoCapture (menu bar app)
+  -> ScreenCaptureKit + Vision OCR + embeddings
+  -> SQLite (FTS + metadata)
+  -> H.264 video segments
+
+MementoTimeline (viewer)
+  -> timeline browsing + semantic/text search
+  -> command palette / action hub
 ```
-┌─────────────────┐     ┌──────────────┐
-│ MementoCapture  │────▶│   SQLite     │◀────│ MementoTimeline │
-│                 │     │  + FTS5      │     │                 │
-│ • Screenshot    │     │  + Vectors   │     │ • View frames   │
-│ • Vision OCR    │     └──────────────┘     │ • Text search   │
-│ • H.264 encode  │            │             │ • Semantic search│
-│ • Embeddings    │            ▼             └─────────────────┘
-└─────────────────┘     ~/.cache/memento/
-```
 
-## Semantic Search
+## Privacy and Security
 
-Uses Apple NaturalLanguage for on-device embeddings:
+- 100% local storage, no cloud requirement
+- No telemetry pipeline
+- Clipboard capture is optional
+- Data location defaults to `~/.cache/memento`
 
-```swift
-// 512-dim sentence embedding → Int8 quantized (8x compression)
-NLEmbedding.sentenceEmbedding(for: .english)
-```
-
-Data stored in `~/.cache/memento/`
-
-## Privacy
-
-- **100% offline** — works without internet
-- **No accounts** — no sign-up required  
-- **No telemetry** — zero data collection
-- **Clipboard opt-in** — clipboard monitoring disabled by default, toggle in menu
-- **Local storage** — delete anytime with `rm -rf ~/.cache/memento`
-
-## Alternatives
-
-| App | Platform | Price | Privacy |
-|-----|----------|-------|---------|
-| [Rewind.ai](https://rewind.ai) | macOS | $19/mo | Cloud |
-| [Memento (Python)](https://github.com/apirrone/Memento) | Linux | Free | Local |
-| **Memento Native** | **macOS** | **Free** | **Local** |
-
-## Roadmap
-
-### 🤖 AI-Powered Search (Coming)
-
-Local LLM integration for natural language queries:
-
-- "What was that article about React I read yesterday?"
-- "Find the Slack message from Johan about the API"
-- "Show me when I was working on the login bug"
-- "What did I copy to clipboard around 3pm?"
+More: [SECURITY.md](SECURITY.md)
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal and non-commercial use. Commercial sale prohibited.
+[PolyForm Noncommercial 1.0.0](LICENSE)
 
 ---
 
-**Keywords:** screen recorder macos, ocr search mac, rewind alternative, local screen recording, privacy screen capture, searchable screenshots, macos productivity, swift screencapturekit
+Keywords: macOS OCR search, semantic search, timeline memory, screen recorder, local-first privacy, ScreenCaptureKit, Swift.

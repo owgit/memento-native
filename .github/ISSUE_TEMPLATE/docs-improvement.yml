@@ -1,0 +1,23 @@
+name: Docs improvement
+description: Report missing, unclear, or outdated docs
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Affected page/file
+      placeholder: README.md or docs/FAQ.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or incorrect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested improvement

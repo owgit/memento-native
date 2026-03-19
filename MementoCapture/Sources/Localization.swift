@@ -59,10 +59,11 @@ enum L {
     static var updateInstallFailedTitle: String { isSwedish ? "Kunde inte installera uppdateringen" : "Could not install update" }
     static var updateInstallFailedMessage: String {
         isSwedish
-            ? "Automatisk installation misslyckades. Du kan öppna release-sidan och installera manuellt."
-            : "Automatic install failed. You can open the release page and install manually."
+            ? "Automatisk installation misslyckades. Du kan öppna release-sidan, läsa FAQ och installera manuellt."
+            : "Automatic install failed. You can open the release page, check the FAQ, and install manually."
     }
     static var openReleasePage: String { isSwedish ? "Öppna release-sida" : "Open release page" }
+    static var openFAQ: String { isSwedish ? "Öppna FAQ" : "Open FAQ" }
     static var later: String { isSwedish ? "Senare" : "Later" }
     static var updateNotificationTitle: String { isSwedish ? "Memento-uppdatering finns" : "Memento update available" }
     static func updateNotificationBody(_ version: String) -> String {
