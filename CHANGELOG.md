@@ -4,10 +4,49 @@ All notable changes to Memento Native will be documented in this file.
 
 ## [2.0.6] - 2026-04-24
 
+### Highlights
+- Memento now ships as a single app: install and run `Memento Capture.app`, then open Timeline from the menu bar instead of managing a separate `Memento Timeline.app`
+- Timeline now supports app-aware browsing with app filters, per-app counts, app-scoped search, scrubber markers, and previous/next marker navigation
+- GitHub/direct updates were hardened for the new single-app DMG layout and official Developer ID-signed releases
+
+### Added
+- Embedded Timeline window hosted inside Capture through `TimelineWindowController`
+- Shared Timeline runtime configuration so embedded Timeline uses the active storage path and capture interval from Capture settings
+- Standalone Timeline dev host under `MementoTimeline/App` while keeping the release distribution single-app
+- App filter chips in Timeline, including `All` plus detected apps with result counts
+- App-specific scrubber markers and previous/next controls for jumping between captures from the selected app
+- App identity metadata in Timeline segments so search, filters, and marker rendering can align on bundle/app identity
+- Auto-start registration tests and Timeline runtime configuration tests
+
+### Improved
+- DMG packaging now builds the Xcode/XcodeGen single-app project and stages only `Memento Capture.app`
+- Update installer now expects the single-app DMG layout instead of copying both Capture and Timeline apps
+- Menu bar actions open Timeline and Settings in-app and dismiss the menu before presenting windows
+- Settings window is resizable, autosaved, and better handles excluded-app input validation
+- Release metadata now consistently uses `2.0.6` / build `206` across the Xcode project, bundle scripts, README, and DMG script
+- Direct-update checks are skipped for App Store distribution builds
+- Update failure dialogs include a FAQ path for manual recovery
+- Permission state refresh uses async screen-recording verification before syncing capture state
+- Debug screenshots use app storage in App Store-style builds and Desktop for direct builds
+- Documentation now covers FAQ, Settings, Security, Support, release process, repository settings, and update reliability
+- GitHub release hygiene now includes issue templates, PR template, CODEOWNERS, and Release Guard validation
+
 ### Fixed
 - Automatic GitHub updater now installs official Developer ID-signed DMGs even when notarization is unavailable
 - Update installer errors no longer surface successful `codesign` diagnostics as the apparent failure reason
 - Installer verification now checks the downloaded DMG team id, app bundle id, app version, and app signature before copying
+- Updater no longer looks for or copies a separate `Memento Timeline.app`
+- Relaunch after update now goes through a dedicated relaunch helper instead of an inline temporary script
+- Bundle scripts no longer default to stale `2.0.3` metadata
+
+### Verification
+- `swift test` in `MementoCapture`
+- `swift test` in `MementoTimeline`
+- `git diff --check`
+- DMG checksum, DMG codesign, mounted app codesign, and installer verification against `Memento-Native-2.0.6.dmg`
+
+### Distribution Note
+- The GitHub DMG is Developer ID-signed, but notarization is still blocked until the Apple Developer agreement/notary profile is fixed
 
 ## [2.0.5] - 2026-04-24
 

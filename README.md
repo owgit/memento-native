@@ -55,9 +55,10 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 
 ## Latest (v2.0.6)
 
-- Hotfix for automatic GitHub updates when the DMG is Developer ID-signed but not notarized
-- Installer verification now checks team id, bundle id, version, and app signature before copying
-- Includes the v2.0.5 app-filtered Timeline search and scrubber marker release
+- Single-app distribution: install `Memento Capture.app`; Timeline now opens inside the app from the menu bar
+- App-aware Timeline browsing: app filters, per-app counts, app-scoped search, scrubber markers, and previous/next marker jumps
+- Hardened GitHub updater for the new single-app DMG layout and official Developer ID-signed releases
+- Updated DMG/XcodeGen release pipeline, release guard, FAQ, settings docs, security/support docs, and repository templates
 
 Release references:
 - Changelog entry: [v2.0.6 in CHANGELOG](CHANGELOG.md#206---2026-04-24)
