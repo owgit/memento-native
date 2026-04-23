@@ -73,7 +73,7 @@ Tradeoff:
 
 ### Excluded apps
 
-Default includes Timeline app names.
+Default preserves older Timeline app names for compatibility. Self-capture prevention for Memento's own windows is automatic.
 
 **EN:** Add app names that should never be OCR-scanned.
 
@@ -104,9 +104,9 @@ Default path: `~/.cache/memento`
 
 Default: `Off`
 
-**EN:** Installs/removes LaunchAgent for auto-start.
+**EN:** Direct builds install/remove a LaunchAgent for auto-start. App Store builds use the system-managed login item path instead.
 
-**SV:** Installerar/tar bort LaunchAgent för autostart.
+**SV:** Direktdistribution installerar/tar bort en LaunchAgent för autostart. App Store-versionen använder istället systemets login item-flöde.
 
 ### Setup Hub
 

@@ -31,8 +31,6 @@ final class MenuBarManager {
     private let lastNotifiedUpdateVersionKey = "lastNotifiedUpdateVersion"
     private let lastAutomaticUpdateCheckAtKey = "lastAutomaticUpdateCheckAt"
     
-    init() {}
-    
     func setup(captureService: CaptureService) {
         self.captureService = captureService
         hasScreenPermission = ScreenshotCapture.hasPermission()
@@ -49,7 +47,11 @@ final class MenuBarManager {
         refreshPermissionState(forceIconUpdate: true, syncService: false)
         startPermissionMonitoring()
         startStatusRefresh()
-        startUpdateChecks()
+        if AppVersionInfo.isAppStoreDistribution {
+            AppLog.info("ℹ️ App Store distribution detected; skipping direct-update checks.")
+        } else {
+            startUpdateChecks()
+        }
 
         Task { @MainActor in
             self.syncCaptureServiceState()
@@ -91,12 +93,14 @@ final class MenuBarManager {
         menu.addItem(settingsItem)
 
         // Update check
-        let updateItem = NSMenuItem(title: L.checkForUpdates, action: #selector(handleUpdateMenuAction), keyEquivalent: "")
-        updateItem.target = self
-        updateItem.tag = updateMenuTag
-        menu.addItem(updateItem)
+        if !AppVersionInfo.isAppStoreDistribution {
+            let updateItem = NSMenuItem(title: L.checkForUpdates, action: #selector(handleUpdateMenuAction), keyEquivalent: "")
+            updateItem.target = self
+            updateItem.tag = updateMenuTag
+            menu.addItem(updateItem)
 
-        menu.addItem(NSMenuItem.separator())
+            menu.addItem(NSMenuItem.separator())
+        }
 
         // Advanced submenu: keep technical utilities out of the primary menu flow.
         let advancedItem = NSMenuItem(title: L.advancedMenu, action: nil, keyEquivalent: "")
@@ -157,25 +161,24 @@ final class MenuBarManager {
         }
         updateControlCenter()
     }
+
+    private func dismissMenuAndPerform(_ action: @escaping () -> Void) {
+        statusItem?.menu?.cancelTracking()
+        DispatchQueue.main.async {
+            action()
+        }
+    }
     
     @objc private func openTimeline() {
-        // Try /Applications first, then ~/Applications
-        let paths = [
-            "/Applications/Memento Timeline.app",
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Memento Timeline.app").path
-        ]
-        for path in paths {
-            let url = URL(fileURLWithPath: path)
-            if FileManager.default.fileExists(atPath: path) {
-                NSWorkspace.shared.open(url)
-                return
-            }
+        dismissMenuAndPerform {
+            TimelineWindowController.shared.show()
         }
-        AppLog.warning("⚠️ Memento Timeline not found")
     }
     
     @objc private func openSettings() {
-        SettingsWindowController.shared.show()
+        dismissMenuAndPerform {
+            SettingsWindowController.shared.show()
+        }
     }
 
     // MARK: - Updates
@@ -207,6 +210,11 @@ final class MenuBarManager {
     }
 
     @objc private func handleUpdateMenuAction() {
+        guard !AppVersionInfo.isAppStoreDistribution else {
+            AppLog.info("ℹ️ Ignoring direct update action on App Store distribution.")
+            return
+        }
+
         if isInstallingUpdate {
             return
         }
@@ -290,14 +298,16 @@ final class MenuBarManager {
     }
 
     private func refreshPermissionState(forceIconUpdate: Bool = false, syncService: Bool = true) {
-        let latestPermission = ScreenshotCapture.hasPermission()
-        let changed = latestPermission != hasScreenPermission
-        hasScreenPermission = latestPermission
-        if syncService {
-            syncCaptureServiceState()
-        }
-        if changed || forceIconUpdate {
-            updateIcon()
+        Task { @MainActor in
+            let latestPermission = await ScreenshotCapture.verifyPermission()
+            let changed = latestPermission != hasScreenPermission
+            hasScreenPermission = latestPermission
+            if syncService {
+                syncCaptureServiceState()
+            }
+            if changed || forceIconUpdate {
+                updateIcon()
+            }
         }
     }
 
@@ -681,10 +691,7 @@ final class MenuBarManager {
         fi
 
         /usr/sbin/spctl -a -vv --type execute "$MOUNT_POINT/Memento Capture.app" >/dev/null 2>&1
-        /usr/sbin/spctl -a -vv --type execute "$MOUNT_POINT/Memento Timeline.app" >/dev/null 2>&1
-
         /usr/bin/ditto "$MOUNT_POINT/Memento Capture.app" "/Applications/Memento Capture.app"
-        /usr/bin/ditto "$MOUNT_POINT/Memento Timeline.app" "/Applications/Memento Timeline.app"
         """
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -715,14 +722,14 @@ final class MenuBarManager {
         }
     }
 
-    private func shellQuote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
-
     private func escapeForAppleScript(_ command: String) -> String {
         command
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     private func showUpdateInstalledAlert() {
@@ -739,66 +746,16 @@ final class MenuBarManager {
     }
 
     private func relaunchAfterUpdateInstall() {
-        // Wait for the current process to fully exit before reopening the updated app.
-        let fileManager = FileManager.default
-        let scriptURL = fileManager.temporaryDirectory.appendingPathComponent("memento-relaunch-\(UUID().uuidString).sh")
-        let currentPID = ProcessInfo.processInfo.processIdentifier
-        let appPath = "/Applications/Memento Capture.app"
-        let script = """
-        #!/bin/bash
-        set -euo pipefail
-
-        APP_PATH=\(shellQuote(appPath))
-        OLD_PID=\(currentPID)
-        SELF_PATH=\(shellQuote(scriptURL.path))
-
-        cleanup() {
-            /bin/rm -f "$SELF_PATH"
+        let failureMessage = L.isSwedish
+            ? "Kunde inte starta om appen automatiskt. Starta om manuellt från /Applications."
+            : "Could not restart the app automatically. Please restart it manually from /Applications."
+        let didRelaunch = AppRelauncher.relaunch(
+            appPath: "/Applications/Memento Capture.app",
+            failureMessage: failureMessage
+        )
+        if !didRelaunch {
+            AppLog.warning("⚠️ Failed to relaunch app after update install")
         }
-        trap cleanup EXIT
-
-        for _ in $(/usr/bin/seq 1 100); do
-            if ! /bin/kill -0 "$OLD_PID" >/dev/null 2>&1; then
-                break
-            fi
-            /bin/sleep 0.2
-        done
-
-        /usr/bin/open -n "$APP_PATH" >/dev/null 2>&1 || {
-            /bin/sleep 2
-            /usr/bin/open "$APP_PATH" >/dev/null 2>&1
-        }
-        """
-
-        var didScheduleRelaunch = false
-        do {
-            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
-            process.arguments = ["/bin/bash", scriptURL.path]
-            process.standardOutput = nil
-            process.standardError = nil
-            try process.run()
-            didScheduleRelaunch = true
-        } catch {
-            AppLog.warning("⚠️ Failed to schedule relaunch: \(error)")
-        }
-
-        guard didScheduleRelaunch else {
-            let alert = NSAlert()
-            alert.messageText = L.errorTitle
-            alert.informativeText = L.isSwedish
-                ? "Kunde inte starta om appen automatiskt. Starta om manuellt från /Applications."
-                : "Could not restart the app automatically. Please restart it manually from /Applications."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: L.ok)
-            alert.runModal()
-            return
-        }
-
-        NSApp.terminate(nil)
     }
 
     private func showUpdateInstallFailedAlert(error: Error, releaseURL: URL) {
@@ -939,9 +896,15 @@ final class MenuBarManager {
                 alert.runModal()
                 return
             }
-            
-            let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
-            let path = desktop.appendingPathComponent("memento-debug-\(Int(Date().timeIntervalSince1970)).png")
+
+            let destinationDirectory: URL
+            if AppVersionInfo.isAppStoreDistribution {
+                destinationDirectory = Settings.shared.storageURL.appendingPathComponent("Debug", isDirectory: true)
+                try? FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            } else {
+                destinationDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+            }
+            let path = destinationDirectory.appendingPathComponent("memento-debug-\(Int(Date().timeIntervalSince1970)).png")
             
             let bitmap = NSBitmapImageRep(cgImage: image)
             if let data = bitmap.representation(using: .png, properties: [:]) {
@@ -949,7 +912,7 @@ final class MenuBarManager {
                 
                 let alert = NSAlert()
                 alert.messageText = L.debugScreenshotSaved
-                alert.informativeText = L.screenshotSavedMessage(path.lastPathComponent, image.width, image.height)
+                alert.informativeText = L.screenshotSavedMessage(path.path, image.width, image.height)
                 alert.addButton(withTitle: L.open)
                 alert.addButton(withTitle: L.ok)
                 
@@ -962,13 +925,17 @@ final class MenuBarManager {
     }
     
     @objc private func checkPermission() {
-        PermissionGuideController.shared.show(reason: .manual)
-        refreshPermissionState(forceIconUpdate: true)
+        dismissMenuAndPerform { [weak self] in
+            PermissionGuideController.shared.show(reason: .manual)
+            self?.refreshPermissionState(forceIconUpdate: true)
+        }
     }
     
     @objc private func openBuyMeACoffee() {
-        if let url = URL(string: "https://buymeacoffee.com/uygarduzgun") {
-            NSWorkspace.shared.open(url)
+        dismissMenuAndPerform {
+            if let url = URL(string: "https://buymeacoffee.com/uygarduzgun") {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
     

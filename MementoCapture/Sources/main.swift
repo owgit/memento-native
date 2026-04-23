@@ -35,23 +35,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isUpdate = previousVersion != nil && previousVersion != currentVersion
         defaults.set(currentVersion, forKey: lastLaunchVersionKey)
 
-        let hasPermission = CGPreflightScreenCaptureAccess()
-        
-        // Unified setup hub handles first launch, updates, and permission recovery.
         if isFirstLaunch {
             PermissionGuideController.shared.show(reason: .firstLaunch)
             return
         }
 
-        if !hasPermission {
-            PermissionGuideController.shared.show(reason: .permissionMissing)
-            return
-        }
+        Task { @MainActor in
+            let hasPermission = await ScreenshotCapture.verifyPermission()
 
-        if isUpdate, let previousVersion {
-            PermissionGuideController.shared.show(
-                reason: .updated(previous: previousVersion, current: currentVersion)
-            )
+            if !hasPermission {
+                PermissionGuideController.shared.show(reason: .permissionMissing)
+                return
+            }
+
+            if isUpdate, let previousVersion {
+                PermissionGuideController.shared.show(
+                    reason: .updated(previous: previousVersion, current: currentVersion)
+                )
+                return
+            }
+
+            if LegacyTimelineMigration.shouldPrompt {
+                LegacyTimelineMigration.showPromptIfNeeded()
+            }
         }
     }
 }

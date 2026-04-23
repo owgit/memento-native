@@ -69,6 +69,46 @@ enum L {
     static func updateNotificationBody(_ version: String) -> String {
         isSwedish ? "Version \(version) finns att ladda ner." : "Version \(version) is ready to download."
     }
+    static var legacyTimelineMigrationTitle: String {
+        isSwedish ? "Ta bort gamla Timeline-appen?" : "Remove old Timeline app?"
+    }
+    static func legacyTimelineMigrationMessage(_ paths: [String]) -> String {
+        _ = paths
+        if isSwedish {
+            return """
+            Timeline finns nu i Memento Capture.
+            Du kan ta bort den gamla appen utan risk.
+            Öppna Timeline via menyradsikonen eller med ⌘T.
+            """
+        }
+        return """
+        Timeline now lives inside Memento Capture.
+        You can safely remove the old app.
+        Open Timeline from the menu bar icon or with ⌘T.
+        """
+    }
+    static var legacyTimelineCleanupFailedTitle: String {
+        isSwedish ? "Kunde inte flytta gamla Timeline-appen" : "Could not move old Timeline app"
+    }
+    static func legacyTimelineCleanupFailedMessage(_ paths: [String], _ reason: String) -> String {
+        let joinedPaths = paths.joined(separator: "\n")
+        if isSwedish {
+            return """
+            Memento kunde inte flytta den gamla appen automatiskt.
+
+            \(joinedPaths)
+
+            Orsak: \(reason)
+            """
+        }
+        return """
+        Memento could not move the old app automatically.
+
+        \(joinedPaths)
+
+        Reason: \(reason)
+        """
+    }
     
     // MARK: - Permissions
     // MARK: - Statistics
@@ -96,16 +136,24 @@ enum L {
     static var errorTitle: String { isSwedish ? "Fel" : "Error" }
     static var screenshotError: String { isSwedish ? "Kunde inte ta skärmdump. Kontrollera behörigheter." : "Could not take screenshot. Check permissions." }
     static var debugScreenshotSaved: String { isSwedish ? "Debug-skärmdump sparad" : "Debug Screenshot Saved" }
-    static func screenshotSavedMessage(_ filename: String, _ width: Int, _ height: Int) -> String {
+    static func screenshotSavedMessage(_ filePath: String, _ width: Int, _ height: Int) -> String {
         isSwedish
-            ? "Bild sparad på skrivbordet:\n\(filename)\n\nStorlek: \(width)x\(height)"
-            : "Image saved to Desktop:\n\(filename)\n\nSize: \(width)x\(height)"
+            ? "Bild sparad här:\n\(filePath)\n\nStorlek: \(width)x\(height)"
+            : "Image saved here:\n\(filePath)\n\nSize: \(width)x\(height)"
     }
     
     // MARK: - Buttons
     static var ok: String { "OK" }
     static var cancel: String { isSwedish ? "Avbryt" : "Cancel" }
     static var open: String { isSwedish ? "Öppna" : "Open" }
+    static var showInFinder: String { isSwedish ? "Visa i Finder" : "Show in Finder" }
+    static var moveToTrash: String { isSwedish ? "Flytta till Papperskorgen" : "Move to Trash" }
+    static var removeOldTimelineApp: String {
+        isSwedish ? "Ta bort gamla appen (Rekommenderas)" : "Remove old app (Recommended)"
+    }
+    static var openTimelineNow: String { isSwedish ? "Öppna Timeline nu" : "Open Timeline now" }
+    static var keepForNow: String { isSwedish ? "Behåll tills vidare" : "Keep for now" }
+    static var notNow: String { isSwedish ? "Inte nu" : "Not Now" }
     
     // MARK: - Community
     static var buyMeACoffee: String { isSwedish ? "Bjud på en kaffe" : "Buy me a coffee" }

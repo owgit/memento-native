@@ -15,7 +15,9 @@ DerivedData/
 
 # Build output
 dist/
+dist-appstore/
 *.dmg
+*.pkg
 
 # Logs
 *.log

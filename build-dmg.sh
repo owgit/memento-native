@@ -1,10 +1,11 @@
 #!/bin/bash
-# Build DMG installer for Memento Native
-# Creates a professional DMG with both apps
+# Build DMG installer for the single-app Memento distribution.
 
 set -euo pipefail
 
-DEFAULT_VERSION="2.0.4"
+DEFAULT_VERSION="2.0.5"
+PROJECT_FILE="Memento.xcodeproj"
+SCHEME="Memento Capture"
 if [ "$#" -gt 1 ]; then
     echo "Usage: $0 [version]"
     echo "   or: MEMENTO_VERSION=1.2.3 $0"
@@ -12,6 +13,8 @@ if [ "$#" -gt 1 ]; then
 fi
 
 VERSION="${MEMENTO_VERSION:-${1:-$DEFAULT_VERSION}}"
+DISTRIBUTION_CHANNEL="${MEMENTO_DISTRIBUTION_CHANNEL:-direct}"
+APP_GROUP_IDENTIFIER="${MEMENTO_APP_GROUP_IDENTIFIER:-}"
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "❌ Invalid version: $VERSION"
     echo "   Expected format: MAJOR.MINOR.PATCH (example: 1.0.4)"
@@ -21,9 +24,12 @@ fi
 DMG_NAME="Memento-Native-${VERSION}"
 DMG_DIR="dist"
 STAGING_DIR="${DMG_DIR}/staging"
+DERIVED_DATA_DIR="${DMG_DIR}/DerivedData"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTARY_PROFILE=""
 DMG_PATH="${DMG_DIR}/${DMG_NAME}.dmg"
+BUILT_APP="${DERIVED_DATA_DIR}/Build/Products/Release/Memento Capture.app"
+CAPTURE_APP="${STAGING_DIR}/Memento Capture.app"
 ALLOW_UNTRUSTED_RELEASE="${MEMENTO_ALLOW_UNTRUSTED_RELEASE:-0}"
 PREFERRED_NOTARY_PROFILES=("MEMENTO_NOTARY" "memento-notary")
 
@@ -69,6 +75,38 @@ select_sign_identity() {
     else
         echo "-"
     fi
+}
+
+version_to_build_number() {
+    echo "$1" | tr -d '.'
+}
+
+ensure_project() {
+    if [ -f "${SCRIPT_DIR}/project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
+        (cd "$SCRIPT_DIR" && xcodegen generate >/dev/null)
+    fi
+
+    if [ ! -d "${SCRIPT_DIR}/${PROJECT_FILE}" ]; then
+        echo "❌ Missing ${PROJECT_FILE}. Run xcodegen generate first."
+        exit 1
+    fi
+}
+
+build_release_app() {
+    local build_number
+    build_number="$(version_to_build_number "$VERSION")"
+
+    xcodebuild \
+        -project "${SCRIPT_DIR}/${PROJECT_FILE}" \
+        -scheme "$SCHEME" \
+        -configuration Release \
+        -derivedDataPath "${SCRIPT_DIR}/${DERIVED_DATA_DIR}" \
+        CODE_SIGNING_ALLOWED=NO \
+        MARKETING_VERSION="$VERSION" \
+        CURRENT_PROJECT_VERSION="$build_number" \
+        MEMENTO_DISTRIBUTION_CHANNEL="$DISTRIBUTION_CHANNEL" \
+        MEMENTO_APP_GROUP_IDENTIFIER="$APP_GROUP_IDENTIFIER" \
+        build
 }
 
 SIGN_IDENTITY="$(select_sign_identity)"
@@ -117,111 +155,24 @@ echo ""
 rm -rf "$DMG_DIR"
 mkdir -p "$STAGING_DIR"
 
-# Build both apps
-echo "📦 Building Memento Capture..."
-cd MementoCapture
-swift build -c release
-cd ..
+ensure_project
 
-echo "📦 Building Memento Timeline..."
-cd MementoTimeline
-swift build -c release
-cd ..
+echo "📦 Building Memento Capture from Xcode project..."
+build_release_app
 
-# Create Memento Capture.app
-echo "🎁 Creating Memento Capture.app..."
-CAPTURE_APP="${STAGING_DIR}/Memento Capture.app"
-mkdir -p "$CAPTURE_APP/Contents/MacOS"
-mkdir -p "$CAPTURE_APP/Contents/Resources"
+if [ ! -d "$BUILT_APP" ]; then
+    echo "❌ Expected app bundle not found at ${BUILT_APP}"
+    exit 1
+fi
 
-cp MementoCapture/.build/release/memento-capture "$CAPTURE_APP/Contents/MacOS/"
-cp MementoCapture/AppIcon.icns "$CAPTURE_APP/Contents/Resources/" 2>/dev/null || true
+echo "🎁 Staging Memento Capture.app..."
+/usr/bin/ditto "$BUILT_APP" "$CAPTURE_APP"
 
-cat > "$CAPTURE_APP/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>memento-capture</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.memento.capture</string>
-    <key>CFBundleName</key>
-    <string>Memento Capture</string>
-    <key>CFBundleDisplayName</key>
-    <string>Memento Capture</string>
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>Memento needs screen recording to capture and search your screen history.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>Memento needs Automation access to read the active browser tab URL and title for search history.</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>© 2024-2025 Uygar Düzgün. PolyForm Noncommercial License.</string>
-</dict>
-</plist>
-EOF
-
-# Create Memento Timeline.app
-echo "🎁 Creating Memento Timeline.app..."
-TIMELINE_APP="${STAGING_DIR}/Memento Timeline.app"
-mkdir -p "$TIMELINE_APP/Contents/MacOS"
-mkdir -p "$TIMELINE_APP/Contents/Resources"
-
-cp MementoTimeline/.build/release/MementoTimeline "$TIMELINE_APP/Contents/MacOS/"
-cp MementoTimeline/AppIcon.icns "$TIMELINE_APP/Contents/Resources/" 2>/dev/null || true
-
-cat > "$TIMELINE_APP/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>MementoTimeline</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.memento.timeline</string>
-    <key>CFBundleName</key>
-    <string>Memento Timeline</string>
-    <key>CFBundleDisplayName</key>
-    <string>Memento Timeline</string>
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSHumanReadableCopyright</key>
-    <string>© 2024-2025 Uygar Düzgün. PolyForm Noncommercial License.</string>
-</dict>
-</plist>
-EOF
-
-# Sign both apps (Hardened Runtime + entitlements)
-echo "🔐 Signing apps..."
+# Sign app (Hardened Runtime + entitlements)
+echo "🔐 Signing app..."
 codesign --force --options runtime --timestamp \
     --entitlements "${SCRIPT_DIR}/MementoCapture/MementoCapture.entitlements" \
     --sign "$SIGN_IDENTITY" "$CAPTURE_APP"
-codesign --force --options runtime --timestamp \
-    --entitlements "${SCRIPT_DIR}/MementoTimeline/MementoTimeline.entitlements" \
-    --sign "$SIGN_IDENTITY" "$TIMELINE_APP"
 
 # Create Applications symlink for DMG
 ln -s /Applications "${STAGING_DIR}/Applications"
@@ -239,8 +190,8 @@ cat > "${STAGING_DIR}/.background/background.svg" << 'EOF'
   </defs>
   <rect width="600" height="400" fill="url(#bg)"/>
   <text x="300" y="50" text-anchor="middle" fill="#a855f7" font-family="SF Pro Display, Helvetica" font-size="28" font-weight="600">Memento Native</text>
-  <text x="300" y="80" text-anchor="middle" fill="#9ca3af" font-family="SF Pro Display, Helvetica" font-size="14">Drag both apps to Applications</text>
-  <text x="300" y="380" text-anchor="middle" fill="#4b5563" font-family="SF Pro Display, Helvetica" font-size="11">Then open Memento Capture from Applications</text>
+  <text x="300" y="80" text-anchor="middle" fill="#9ca3af" font-family="SF Pro Display, Helvetica" font-size="14">Drag Memento Capture to Applications</text>
+  <text x="300" y="380" text-anchor="middle" fill="#4b5563" font-family="SF Pro Display, Helvetica" font-size="11">Timeline now opens inside the app</text>
 </svg>
 EOF
 
@@ -254,17 +205,17 @@ cat > "${STAGING_DIR}/README.txt" << 'EOF'
 MEMENTO NATIVE - Installation
 ==============================
 
-1. Drag both apps to Applications folder
+1. Drag Memento Capture to Applications folder
 2. Open "Memento Capture" from Applications
 3. Grant Screen Recording permission when prompted
-4. Use "Memento Timeline" to search your history
+4. Use "Open Timeline" from the menu bar to search your history
 
 UPDATING FROM A PREVIOUS VERSION
 ================================
 
-1. Quit both Memento apps
-2. Replace both apps in /Applications
-3. Launch Memento Capture first
+1. Quit Memento Capture
+2. Replace Memento Capture in /Applications
+3. Launch Memento Capture
 4. If capture stops working:
    - System Settings -> Privacy & Security -> Screen Recording
    - Toggle Memento Capture OFF/ON, or remove and add it again

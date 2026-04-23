@@ -3,7 +3,8 @@ import NaturalLanguage
 import Accelerate
 
 /// Local embedding service using Apple NaturalLanguage framework.
-/// Uses language-aware model selection to improve multilingual matching quality.
+/// Loads system language + English at startup; other supported languages are lazy-loaded
+/// on first encounter (e.g. when a search query is detected as another language).
 final class EmbeddingService {
     struct EmbeddingResult {
         let vector: [Float]
@@ -13,25 +14,20 @@ final class EmbeddingService {
 
     static let supportedLanguages: [NLLanguage] = [.english, .swedish, .german, .french, .spanish]
 
-    private let sentenceEmbeddings: [NLLanguage: NLEmbedding]
-    private let availableLanguages: [NLLanguage]
+    private var sentenceEmbeddings: [NLLanguage: NLEmbedding] = [:]
 
     init() {
-        var loadedEmbeddings: [NLLanguage: NLEmbedding] = [:]
-
-        for language in Self.supportedLanguages {
-            if let embedding = NLEmbedding.sentenceEmbedding(for: language) {
-                loadedEmbeddings[language] = embedding
+        let initialLanguages = Self.languagesToLoadAtStartup()
+        for language in initialLanguages {
+            if let model = NLEmbedding.sentenceEmbedding(for: language) {
+                sentenceEmbeddings[language] = model
             }
         }
 
-        sentenceEmbeddings = loadedEmbeddings
-        availableLanguages = Self.supportedLanguages.filter { loadedEmbeddings[$0] != nil }
-
-        if availableLanguages.isEmpty {
+        if sentenceEmbeddings.isEmpty {
             AppLog.warning("⚠️ Sentence embedding not available")
         } else {
-            let labels = availableLanguages.map(\.rawValue).joined(separator: ", ")
+            let labels = sentenceEmbeddings.keys.map(\.rawValue).sorted().joined(separator: ", ")
             AppLog.info("🧠 Sentence embeddings loaded: \(labels)")
         }
     }
@@ -42,8 +38,8 @@ final class EmbeddingService {
 
         var results: [NLLanguage: EmbeddingResult] = [:]
         for language in candidateLanguages(for: cleanText, preferredLanguage: preferredLanguage) {
-            guard let embedding = sentenceEmbeddings[language],
-                  let vector = embedding.vector(for: cleanText) else {
+            guard let model = embedding(for: language),
+                  let vector = model.vector(for: cleanText) else {
                 continue
             }
 
@@ -52,12 +48,35 @@ final class EmbeddingService {
             results[language] = EmbeddingResult(
                 vector: floatVector,
                 language: language,
-                revision: embedding.revision
+                revision: model.revision
             )
         }
 
         return results
     }
+
+    // MARK: - Lazy model loading
+
+    private func embedding(for language: NLLanguage) -> NLEmbedding? {
+        if let existing = sentenceEmbeddings[language] { return existing }
+        guard Self.supportedLanguages.contains(language) else { return nil }
+        guard let model = NLEmbedding.sentenceEmbedding(for: language) else { return nil }
+        sentenceEmbeddings[language] = model
+        AppLog.info("🧠 Lazy-loaded embedding: \(language.rawValue)")
+        return model
+    }
+
+    private static func languagesToLoadAtStartup() -> [NLLanguage] {
+        var languages: Set<NLLanguage> = [.english]
+        let systemCode = Locale.current.language.languageCode?.identifier ?? "en"
+        let systemLanguage = NLLanguage(rawValue: systemCode)
+        if supportedLanguages.contains(systemLanguage) {
+            languages.insert(systemLanguage)
+        }
+        return Array(languages)
+    }
+
+    // MARK: - Language detection
 
     private func normalizedEmbeddingText(_ text: String) -> String {
         text
@@ -68,11 +87,9 @@ final class EmbeddingService {
     }
 
     private func candidateLanguages(for text: String, preferredLanguage: NLLanguage?) -> [NLLanguage] {
-        guard !availableLanguages.isEmpty else { return [] }
-
         var candidates: [NLLanguage] = []
 
-        if let preferredLanguage, sentenceEmbeddings[preferredLanguage] != nil {
+        if let preferredLanguage, Self.supportedLanguages.contains(preferredLanguage) {
             candidates.append(preferredLanguage)
         }
 
@@ -80,7 +97,7 @@ final class EmbeddingService {
         recognizer.processString(text)
 
         if let dominant = recognizer.dominantLanguage,
-           sentenceEmbeddings[dominant] != nil {
+           Self.supportedLanguages.contains(dominant) {
             candidates.append(dominant)
         }
 
@@ -88,11 +105,12 @@ final class EmbeddingService {
             .sorted { lhs, rhs in lhs.value > rhs.value }
             .map(\.key)
 
-        for language in hypotheses where sentenceEmbeddings[language] != nil {
+        for language in hypotheses where Self.supportedLanguages.contains(language) {
             candidates.append(language)
         }
 
-        candidates.append(contentsOf: availableLanguages)
+        // Fallback: already-loaded languages
+        candidates.append(contentsOf: sentenceEmbeddings.keys)
 
         var deduplicated: [NLLanguage] = []
         var seen = Set<NLLanguage>()

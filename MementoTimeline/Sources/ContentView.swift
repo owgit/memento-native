@@ -106,9 +106,10 @@ private enum FloatingControlColors {
     }
 }
 
-struct ContentView: View {
+public struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
     @Environment(\.colorScheme) private var colorScheme
+    @State private var hostingWindow: NSWindow?
     @State private var showControls = true
     @State private var controlsHideTask: Task<Void, Never>?
     @State private var isHoveringTimeline = false
@@ -129,7 +130,9 @@ struct ContentView: View {
     @State private var hoverPreviewTask: Task<Void, Never>?
     @State private var hoverPreviewCache: [Int: NSImage] = [:]
     
-    var body: some View {
+    public init() {}
+
+    public var body: some View {
         ZStack {
             // Full-screen frame display
             frameView
@@ -190,6 +193,7 @@ struct ContentView: View {
             }
         }
         .background(Color.black)
+        .background(WindowAccessor(window: $hostingWindow))
         .focusable(!manager.isSearching && !manager.isCommandPaletteOpen)
         .focusEffectDisabled()
         .onKeyPress(.leftArrow) {
@@ -413,6 +417,8 @@ struct ContentView: View {
     // MARK: - Timeline Scrubber with App Colors
     private var timelineScrubber: some View {
         VStack(spacing: 6) {
+            appFilterStrip
+
             GeometryReader { geometry in
                 let maxIndex = max(0, manager.totalFrames - 1)
                 let activeIndex = isDragging ? dragFrameIndex : manager.currentFrameIndex
@@ -440,6 +446,18 @@ struct ContentView: View {
                     Capsule()
                         .fill(Color.white.opacity(0.28))
                         .frame(width: max(7, geometry.size.width * progress), height: 14)
+
+                    if let selectedApp = manager.selectedAppFilter, manager.totalFrames > 1 {
+                        let markers = manager.selectedAppMarkerSegments
+                        if !markers.isEmpty {
+                            selectedAppMarkerLayer(
+                                markers: markers,
+                                color: selectedApp.color,
+                                maxIndex: maxIndex
+                            )
+                            .frame(height: 22)
+                        }
+                    }
 
                     if (isHoveringTimeline || isDragging), manager.totalFrames > 0 {
                         let width = max(1, geometry.size.width)
@@ -491,8 +509,14 @@ struct ContentView: View {
                         clearTimelineHoverPreview()
                     }
                 }
+                .onTapGesture { location in
+                    let width = max(1, geometry.size.width)
+                    let prog = max(0, min(1, location.x / width))
+                    let tapIndex = Int(prog * CGFloat(maxIndex))
+                    manager.jumpToFrame(tapIndex)
+                }
                 .gesture(
-                    DragGesture(minimumDistance: 0)
+                    DragGesture(minimumDistance: 5)
                         .onChanged { value in
                             isDragging = true
                             mouseLocation = value.location
@@ -501,7 +525,6 @@ struct ContentView: View {
                             dragFrameIndex = Int(prog * CGFloat(maxIndex))
                             requestTimelineHoverPreview(for: dragFrameIndex)
 
-                            // Throttle: only load frame every 150ms during drag
                             let now = Date()
                             if now.timeIntervalSince(lastFrameLoadTime) > 0.15 {
                                 lastFrameLoadTime = now
@@ -556,6 +579,93 @@ struct ContentView: View {
             .font(.system(size: 10, weight: .medium))
             .foregroundColor(FloatingControlColors.textSecondary(for: colorScheme).opacity(0.95))
         }
+    }
+
+    @ViewBuilder
+    private var appFilterStrip: some View {
+        let filters = manager.timelineAppFilters
+        if !filters.isEmpty {
+            HStack(spacing: 8) {
+                AppFilterChip(
+                    title: L.allApps,
+                    count: manager.timelineSegments.count,
+                    appName: nil,
+                    tint: FloatingControlColors.textSecondary(for: colorScheme),
+                    isSelected: manager.selectedAppFilterId == nil
+                ) {
+                    manager.selectAppFilter(nil)
+                }
+                .help(L.appFilterHelp)
+
+                if manager.selectedAppFilterId != nil {
+                    HStack(spacing: 4) {
+                        Button(action: { manager.jumpToPreviousSelectedAppMarker() }) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 26))
+                        .help(L.previousAppMarkerHelp)
+
+                        Button(action: { manager.jumpToNextSelectedAppMarker() }) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 26))
+                        .help(L.nextAppMarkerHelp)
+                    }
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(filters) { filter in
+                            AppFilterChip(
+                                title: filter.appName,
+                                count: filter.frameCount,
+                                appName: filter.appName,
+                                tint: filter.color,
+                                isSelected: manager.selectedAppFilterId == filter.id
+                            ) {
+                                manager.selectAppFilter(filter.id)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .frame(height: 30)
+                .layoutPriority(1)
+            }
+            .frame(height: 32)
+        }
+    }
+
+    private func selectedAppMarkerLayer(
+        markers: [TimelineManager.TimelineSegment],
+        color: Color,
+        maxIndex: Int
+    ) -> some View {
+        Canvas { context, size in
+            guard maxIndex > 0 else { return }
+
+            let availableWidth = max(1, size.width)
+            let markerWidth = max(2, min(5, availableWidth / CGFloat(max(1, markers.count)) * 0.85))
+            let markerHeight = max(16, size.height - 2)
+
+            for marker in markers {
+                let progress = CGFloat(marker.displayIndex) / CGFloat(maxIndex)
+                let x = min(max(0, availableWidth * progress - (markerWidth / 2)), max(0, availableWidth - markerWidth))
+                let rect = CGRect(
+                    x: x,
+                    y: (size.height - markerHeight) / 2,
+                    width: markerWidth,
+                    height: markerHeight
+                )
+                context.fill(
+                    Path(roundedRect: rect, cornerRadius: markerWidth / 2),
+                    with: .color(color.opacity(0.9))
+                )
+            }
+        }
+        .allowsHitTesting(false)
     }
     
     private func timelineHoverPreview(hoverIndex: Int, segment: TimelineManager.TimelineSegment) -> some View {
@@ -1424,20 +1534,61 @@ struct ContentView: View {
     private func setupKeyHandling() {
         // Only setup once - check if already setup
         guard eventMonitors.isEmpty else { return }
-        
-        // Only monitor mouse movement - keyboard is handled by SwiftUI
+
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { event in
             showControlsTemporarily()
             return event
         }) {
             eventMonitors.append(monitor)
         }
+
+        if let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
+            handleShortcutEvent(event)
+        }) {
+            eventMonitors.append(keyMonitor)
+        }
     }
     
-    private func toggleFullscreen() {
-        if let window = NSApplication.shared.windows.first {
-            window.toggleFullScreen(nil)
+    private func handleShortcutEvent(_ event: NSEvent) -> NSEvent? {
+        guard let hostingWindow, hostingWindow.isKeyWindow else {
+            return event
         }
+
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let characters = event.charactersIgnoringModifiers?.lowercased()
+
+        if modifiers == [.command], characters == "f" {
+            openCommandPalette()
+            return nil
+        }
+
+        if modifiers == [.command], characters == "k" {
+            openSearchOverlay()
+            return nil
+        }
+
+        // In the single-app menubar build, Timeline is a window, not a separate app.
+        // Treat close/quit shortcuts as "close this window" so the background capture app keeps running.
+        if modifiers == [.command], characters == "q" {
+            hostingWindow.performClose(nil)
+            return nil
+        }
+
+        if modifiers == [.command], characters == "w" {
+            hostingWindow.performClose(nil)
+            return nil
+        }
+
+        if modifiers.contains([.command, .control]), characters == "f" {
+            toggleFullscreen()
+            return nil
+        }
+
+        return event
+    }
+
+    private func toggleFullscreen() {
+        hostingWindow?.toggleFullScreen(nil)
     }
 }
 
@@ -1523,6 +1674,80 @@ struct ControlButtonView: View {
                         configuration.trigger()
                     }
             )
+    }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            self.window = view.window
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            self.window = nsView.window
+        }
+    }
+}
+
+// MARK: - App Filter Chip
+struct AppFilterChip: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let title: String
+    let count: Int
+    let appName: String?
+    let tint: Color
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let appName {
+                    AppIconView(appName: appName)
+                        .frame(width: 15, height: 15)
+                } else {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(isSelected ? FloatingControlColors.textPrimary(for: colorScheme) : tint)
+                        .frame(width: 15, height: 15)
+                }
+
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 86, alignment: .leading)
+
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(isSelected ? FloatingControlColors.textPrimary(for: colorScheme) : FloatingControlColors.textMuted(for: colorScheme))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? tint.opacity(0.22) : Color.primary.opacity(0.08))
+                    )
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(isSelected ? tint.opacity(0.24) : Color.primary.opacity(0.06))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(isSelected ? tint.opacity(0.65) : Color.primary.opacity(0.08), lineWidth: 1)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

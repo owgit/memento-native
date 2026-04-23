@@ -2,6 +2,22 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.5] - 2026-04-24
+
+### Added
+- Timeline app filtering with app chips, app-specific counts, and direct search scoping
+- App-specific scrubber markers plus previous/next marker navigation for selected apps
+- Single-app Timeline runtime path so Timeline can open inside the Capture app distribution
+
+### Improved
+- Timeline search now carries app identity more consistently for app-aware browsing
+- Settings window behavior, resizing, and excluded-app input validation are more robust
+- Privacy, permission, update, and release documentation is clearer for GitHub distribution
+
+### Fixed
+- Release script defaults now align with the current GitHub release version
+- Bundle metadata preserves distribution channel details during app updates
+
 ## [2.0.4] - 2026-03-19
 
 ### Added

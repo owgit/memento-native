@@ -20,7 +20,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
 - [Who It's For / För Vem?](#who-its-for--for-vem)
 - [Visual Overview](#visual-overview)
-- [Latest (v2.0.4)](#latest-v204)
+- [Latest (v2.0.5)](#latest-v205)
 - [Install](#install)
 - [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
 - [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
@@ -53,33 +53,33 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
-## Latest (v2.0.4)
+## Latest (v2.0.5)
 
-- Swift 6 migration and concurrency hardening across Capture and Timeline
-- Safer capture scheduling (no overlapping frame jobs)
-- Better permission repair lifecycle in Setup Hub
-- Dead code cleanup and clearer runtime logging
+- Timeline app filtering with app chips, counts, and app-scoped search
+- App-specific scrubber markers with previous/next marker navigation
+- Single-app Timeline runtime path inside the Capture app distribution
+- Settings and release metadata cleanup for the GitHub DMG flow
 
 Release references:
-- Changelog entry: [v2.0.4 in CHANGELOG](CHANGELOG.md#204---2026-03-19)
-- Release page: [v2.0.4 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.4)
+- Changelog entry: [v2.0.5 in CHANGELOG](CHANGELOG.md#205---2026-04-24)
+- Release page: [v2.0.5 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.5)
 
 ## Install
 
 ### Option 1: DMG (recommended)
 
 1. Download latest DMG from [Releases](https://github.com/owgit/memento-native/releases).
-2. Move both apps to `/Applications`:
-   - `Memento Capture.app`
-   - `Memento Timeline.app`
-3. Start `Memento Capture` first.
+2. Move `Memento Capture.app` to `/Applications`.
+3. Start `Memento Capture`.
+4. Open Timeline from the menu bar when you want to browse history.
 
 ### Option 2: Build from source
 
 ```bash
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
-./build-dmg.sh 2.0.4
+xcodegen generate
+./build-dmg.sh 2.0.5
 ```
 
 ## Permissions and Why This Is Needed / Behörigheter och Varför
@@ -180,13 +180,11 @@ If the DMG asset is missing, in-app updater falls back to **Open release page**.
 ## Architecture Snapshot
 
 ```text
-MementoCapture (menu bar app)
+Memento Capture (menu bar app)
   -> ScreenCaptureKit + Vision OCR + embeddings
   -> SQLite (FTS + metadata)
   -> H.264 video segments
-
-MementoTimeline (viewer)
-  -> timeline browsing + semantic/text search
+  -> Timeline window + semantic/text search
   -> command palette / action hub
 ```
 

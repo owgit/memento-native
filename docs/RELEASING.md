@@ -66,7 +66,7 @@ gh workflow run release-guard.yml -f tag=vX.Y.Z
 
 - In-app updater on previous version should detect new release
 - Dialog should show **Install now** (not only **Open release page**)
-- Install path updates both apps in `/Applications`
+- Install path updates `Memento Capture.app` in `/Applications`
 
 ## Troubleshooting
 

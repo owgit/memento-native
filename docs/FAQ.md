@@ -37,14 +37,14 @@ Without Automation, capture still works, but URL/title metadata may be missing.
 - user idle
 - likely video/streaming playback
 - private/incognito browsing
-- Timeline app in foreground
+- Memento-owned UI windows are frontmost
 
 **SV:** Paus sker medvetet i lågnytta- eller känsliga lägen:
 - skärmen låst / skärmsläckare
 - inaktiv användare
 - sannolik video/streaming
 - privat/incognito-läge
-- Timeline-appen i förgrunden
+- Mementos egna fönster ligger överst
 
 ## Can I pause/resume manually? / Kan jag pausa/återuppta manuellt?
 
@@ -62,9 +62,9 @@ See full pros/cons table: [docs/SETTINGS.md](SETTINGS.md)
 
 ## Why can auto-update ask for admin password? / Varför frågar auto-update efter admin-lösenord?
 
-**EN:** In-app updater replaces apps in `/Applications`, which often requires elevated privileges on macOS.
+**EN:** In-app updater replaces the app in `/Applications`, which often requires elevated privileges on macOS.
 
-**SV:** In-app updater ersätter appar i `/Applications`, vilket ofta kräver administratörsrättigheter på macOS.
+**SV:** In-app updater ersätter appen i `/Applications`, vilket ofta kräver administratörsrättigheter på macOS.
 
 This is expected behavior for trusted app replacement.
 

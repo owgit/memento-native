@@ -3,11 +3,13 @@
 
 set -e
 
-RELEASE_VERSION="${MEMENTO_VERSION:-2.0.3}"
+RELEASE_VERSION="${MEMENTO_VERSION:-2.0.5}"
 APP_NAME="Memento Timeline"
 BUNDLE_ID="com.memento.timeline"
 APP_DIR="/Applications/${APP_NAME}.app"
 BINARY_PATH="$APP_DIR/Contents/MacOS/MementoTimeline"
+DISTRIBUTION_CHANNEL="${MEMENTO_DISTRIBUTION_CHANNEL:-direct}"
+APP_GROUP_IDENTIFIER="${MEMENTO_APP_GROUP_IDENTIFIER:-}"
 
 select_sign_identity() {
     if [ -n "${MEMENTO_CODESIGN_IDENTITY:-}" ]; then
@@ -46,6 +48,24 @@ sign_app() {
         --sign "$SIGN_IDENTITY" "$APP_DIR"
 }
 
+ensure_distribution_metadata() {
+    local plist="$APP_DIR/Contents/Info.plist"
+
+    if /usr/libexec/PlistBuddy -c "Print :MementoDistributionChannel" "$plist" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c "Set :MementoDistributionChannel $DISTRIBUTION_CHANNEL" "$plist"
+    else
+        /usr/libexec/PlistBuddy -c "Add :MementoDistributionChannel string $DISTRIBUTION_CHANNEL" "$plist"
+    fi
+
+    if [ -n "$APP_GROUP_IDENTIFIER" ]; then
+        if /usr/libexec/PlistBuddy -c "Print :MementoAppGroupIdentifier" "$plist" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :MementoAppGroupIdentifier $APP_GROUP_IDENTIFIER" "$plist"
+        else
+            /usr/libexec/PlistBuddy -c "Add :MementoAppGroupIdentifier string $APP_GROUP_IDENTIFIER" "$plist"
+        fi
+    fi
+}
+
 echo "🔨 Building release..."
 swift build -c release
 
@@ -61,6 +81,7 @@ if [ -f "$BINARY_PATH" ]; then
     BUILD_NUMBER=$(date +%Y%m%d%H%M)
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$APP_DIR/Contents/Info.plist"
+    ensure_distribution_metadata
 
     echo "🔐 Re-signing app..."
     sign_app
@@ -104,9 +125,13 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>MementoDistributionChannel</key>
+    <string>${DISTRIBUTION_CHANNEL}</string>
 </dict>
 </plist>
 EOF
+
+ensure_distribution_metadata
 
 echo "🔐 Signing app..."
 sign_app

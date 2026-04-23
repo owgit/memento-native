@@ -4,12 +4,10 @@ This guide is for users updating from an older version.
 
 ## Quick update (recommended)
 
-1. Quit both apps:
-   - `Memento Capture`
-   - `Memento Timeline`
+1. Quit `Memento Capture`.
 2. Open the latest DMG from Releases.
-3. Drag **both** apps to `/Applications` and choose **Replace**.
-4. Launch `Memento Capture` first, then `Memento Timeline`.
+3. Drag `Memento Capture.app` to `/Applications` and choose **Replace**.
+4. Launch `Memento Capture` and open Timeline from the menu bar when needed.
 
 ## Will my data be kept?
 

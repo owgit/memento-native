@@ -1,0 +1,69 @@
+name: Memento
+
+options:
+  minimumXcodeGenVersion: 2.44.1
+  deploymentTarget:
+    macOS: "14.0"
+
+packages:
+  MementoTimeline:
+    path: MementoTimeline
+
+targets:
+  Memento Capture:
+    type: application
+    platform: macOS
+    productName: Memento Capture
+    deploymentTarget: "14.0"
+    sources:
+      - path: MementoCapture/Sources
+      - path: MementoCapture/AppIcon.icns
+        buildPhase: resources
+    dependencies:
+      - package: MementoTimeline
+        product: TimelineFeature
+      - sdk: libsqlite3.tbd
+    entitlements:
+      path: MementoCapture/MementoCapture.entitlements
+    info:
+      path: Memento/Info.plist
+      properties:
+        CFBundleDisplayName: $(PRODUCT_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconFile: AppIcon
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSAppleEventsUsageDescription: Memento needs Automation access to read the active browser tab URL and title for search history.
+        NSHighResolutionCapable: true
+        NSScreenCaptureUsageDescription: Memento needs screen recording to capture and search your screen history.
+        MementoDistributionChannel: $(MEMENTO_DISTRIBUTION_CHANNEL)
+        MementoAppGroupIdentifier: $(MEMENTO_APP_GROUP_IDENTIFIER)
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: MementoCapture/MementoCapture.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 205
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Memento/Info.plist
+        MACOSX_DEPLOYMENT_TARGET: 14.0
+        MARKETING_VERSION: 2.0.5
+        MEMENTO_APP_GROUP_IDENTIFIER: ""
+        MEMENTO_DISTRIBUTION_CHANNEL: direct
+        PRODUCT_BUNDLE_IDENTIFIER: com.memento.capture
+        PRODUCT_MODULE_NAME: MementoCaptureApp
+        PRODUCT_NAME: Memento Capture
+        SWIFT_VERSION: 6.0
+
+schemes:
+  Memento Capture:
+    build:
+      targets:
+        Memento Capture: all
+    run:
+      config: Debug
+    archive:
+      config: Release

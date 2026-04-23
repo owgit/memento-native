@@ -15,6 +15,8 @@ final class BrowserCapture {
         "privat surfning",
         "privat fonster",
         "privat lage",
+        "personlig —",
+        "personlig –",
         "about:privatebrowsing"
     ]
     private static let privateURLMarkers = [
@@ -57,19 +59,26 @@ final class BrowserCapture {
     
     // MARK: - Safari
     private static func getSafariInfo() -> BrowserInfo? {
+        // Use window 1 (z-order topmost) instead of front window (last-active).
+        // Safari's "front window" may not match the visually frontmost window
+        // when mixing private and normal windows.
         let script = """
         tell application "Safari"
             if (count of windows) > 0 then
-                set frontWin to front window
-                set currentTab to current tab of frontWin
+                set topWin to window 1
+                try
+                    set currentTab to current tab of topWin
+                on error
+                    return ""
+                end try
                 set tabURL to URL of currentTab
                 set tabTitle to name of currentTab
-                set winTitle to name of frontWin
+                set winTitle to name of topWin
                 return tabURL & "\(delimiter)" & tabTitle & "\(delimiter)" & winTitle
             end if
         end tell
         """
-        guard let result = runAppleScript(script) else { return nil }
+        guard let result = runAppleScript(script), !result.isEmpty else { return nil }
         return parseBrowserInfo(result, browserName: "Safari")
     }
 

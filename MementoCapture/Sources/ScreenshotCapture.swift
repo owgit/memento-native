@@ -10,24 +10,29 @@ final class ScreenshotCapture {
     private var hasWarnedAboutPermission = false
     private var hasLoggedDisplayInfo = false
     
-    /// Check if screen recording permission is granted
+    /// Check if screen recording permission is granted (quick, sync).
+    /// May return false negatives with ad-hoc signed builds — use verifyPermission() for ground truth.
     static func hasPermission() -> Bool {
         return CGPreflightScreenCaptureAccess()
+    }
+
+    /// Reliable async permission check using ScreenCaptureKit as ground truth.
+    /// CGPreflightScreenCaptureAccess() can return false after ad-hoc rebuilds
+    /// even when the toggle is ON in System Settings.
+    static func verifyPermission() async -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            return !content.displays.isEmpty
+        } catch {
+            return false
+        }
     }
     
     /// Capture the entire screen using ScreenCaptureKit
     /// Returns nil silently if permission not granted (no dialog triggered)
     func capture() async -> CGImage? {
-        // Check permission FIRST - don't trigger dialog automatically
-        if !ScreenshotCapture.hasPermission() {
-            if !hasWarnedAboutPermission {
-                AppLog.warning("⚠️ Screen Recording permission not granted - capture disabled")
-                AppLog.info("   Grant permission in: System Settings > Privacy & Security > Screen Recording")
-                hasWarnedAboutPermission = true
-            }
-            return nil
-        }
-        
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             
@@ -73,7 +78,11 @@ final class ScreenshotCapture {
             return image
             
         } catch {
-            AppLog.error("Screenshot capture failed: \(error.localizedDescription)")
+            if !hasWarnedAboutPermission {
+                AppLog.warning("⚠️ Screen capture failed (permission missing?): \(error.localizedDescription)")
+                AppLog.info("   Grant permission in: System Settings > Privacy & Security > Screen Recording")
+                hasWarnedAboutPermission = true
+            }
             return nil
         }
     }

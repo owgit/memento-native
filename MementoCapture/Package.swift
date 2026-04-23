@@ -9,12 +9,21 @@ let package = Package(
     products: [
         .executable(name: "memento-capture", targets: ["MementoCapture"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(path: "../MementoTimeline")
+    ],
     targets: [
         .executableTarget(
             name: "MementoCapture",
-            dependencies: [],
+            dependencies: [
+                .product(name: "TimelineFeature", package: "MementoTimeline")
+            ],
             path: "Sources"
+        ),
+        .testTarget(
+            name: "MementoCaptureTests",
+            dependencies: ["MementoCapture"],
+            path: "Tests"
         )
     ]
 )

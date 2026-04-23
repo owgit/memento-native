@@ -143,9 +143,9 @@ final class CaptureService {
         let activeApp = getActiveApp()
         let appBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         
-        // Skip capture when Timeline app is open (saves resources)
-        if appBundleId == "com.memento.timeline" || activeApp == "Memento Timeline" || activeApp == "MementoTimeline" {
-            AppLog.info("⏸️  Skipping capture - Timeline app is active")
+        // Skip capture while one of Memento's own windows is frontmost.
+        if shouldPauseForOwnedUI(activeBundleId: appBundleId) {
+            AppLog.info("⏸️  Skipping capture - Memento UI is active")
             return
         }
         
@@ -728,6 +728,16 @@ final class CaptureService {
             return ""
         }
         return sanitizeSemanticSegment(host, maxLength: 80)
+    }
+
+    private func shouldPauseForOwnedUI(activeBundleId: String?) -> Bool {
+        guard activeBundleId == Bundle.main.bundleIdentifier else {
+            return false
+        }
+
+        return NSApp.windows.contains { window in
+            window.isVisible && !window.isMiniaturized
+        }
     }
 }
 

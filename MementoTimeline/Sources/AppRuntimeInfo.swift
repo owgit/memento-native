@@ -1,20 +1,8 @@
 import Foundation
 
-enum AppVersionInfo {
+enum AppRuntimeInfo {
     private static var infoDictionary: [String: Any] {
         Bundle.main.infoDictionary ?? [:]
-    }
-
-    static var shortVersion: String {
-        infoDictionary["CFBundleShortVersionString"] as? String ?? "?"
-    }
-
-    static var buildVersion: String {
-        infoDictionary["CFBundleVersion"] as? String ?? "?"
-    }
-
-    static var displayVersion: String {
-        "\(shortVersion) (\(buildVersion))"
     }
 
     static var distributionChannel: String {
@@ -27,6 +15,15 @@ enum AppVersionInfo {
         }
         let trimmedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedValue.isEmpty ? nil : trimmedValue
+    }
+
+    static var sharedDefaults: UserDefaults {
+        if let appGroupIdentifier,
+           let defaults = UserDefaults(suiteName: appGroupIdentifier) {
+            return defaults
+        }
+
+        return UserDefaults.standard
     }
 
     static var isAppStoreDistribution: Bool {
@@ -42,15 +39,6 @@ enum AppVersionInfo {
             && FileManager.default.fileExists(atPath: receiptURL.path)
     }
 
-    static var sharedDefaults: UserDefaults {
-        if let appGroupIdentifier,
-           let defaults = UserDefaults(suiteName: appGroupIdentifier) {
-            return defaults
-        }
-
-        return UserDefaults.standard
-    }
-
     static var defaultStoragePath: String {
         if let appGroupIdentifier,
            let containerURL = FileManager.default.containerURL(
@@ -61,25 +49,5 @@ enum AppVersionInfo {
 
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/memento").path
-    }
-}
-
-enum StorageMetrics {
-    static func totalBytes(in directoryURL: URL) -> Int64? {
-        guard let enumerator = FileManager.default.enumerator(
-            at: directoryURL,
-            includingPropertiesForKeys: [.fileSizeKey]
-        ) else {
-            return nil
-        }
-
-        var totalSize: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                totalSize += Int64(size)
-            }
-        }
-
-        return totalSize
     }
 }

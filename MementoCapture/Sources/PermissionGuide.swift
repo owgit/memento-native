@@ -83,6 +83,7 @@ struct SetupHubView: View {
     @State private var hasPermission = false
     @State private var checkingPermission = false
     @State private var repairingPermission = false
+    @State private var relaunchingAfterPermissionGrant = false
     @State private var permissionPollTask: Task<Void, Never>?
     @State private var repairTask: Task<Void, Never>?
     @State private var repairStatusMessage: String?
@@ -182,6 +183,9 @@ struct SetupHubView: View {
             return .checking
         }
         if repairingPermission {
+            return .recovering
+        }
+        if relaunchingAfterPermissionGrant {
             return .recovering
         }
         if repairStatusIsError, let repairStatusMessage, !repairStatusMessage.isEmpty {
@@ -455,8 +459,10 @@ struct SetupHubView: View {
 
     private func checkPermission() {
         checkingPermission = true
-        hasPermission = CGPreflightScreenCaptureAccess()
-        checkingPermission = false
+        Task { @MainActor in
+            hasPermission = await ScreenshotCapture.verifyPermission()
+            checkingPermission = false
+        }
     }
 
     private func openSystemSettings() {
@@ -514,9 +520,7 @@ struct SetupHubView: View {
         checkPermission()
 
         if grantedImmediately || hasPermission {
-            repairStatusMessage = isSwedish
-                ? "Behörighet aktiverad."
-                : "Permission enabled."
+            beginAutomaticRelaunchAfterPermissionGrant()
             return
         }
 
@@ -539,11 +543,8 @@ struct SetupHubView: View {
                 guard !Task.isCancelled else { return }
                 checkPermission()
                 if hasPermission {
-                    repairStatusIsError = false
-                    repairStatusMessage = isSwedish
-                        ? "Behörighet registrerad. Starta om appen en gång."
-                        : "Permission detected. Restart the app once."
                     permissionPollTask = nil
+                    beginAutomaticRelaunchAfterPermissionGrant()
                     return
                 }
                 if attempt >= 30 {
@@ -576,9 +577,35 @@ struct SetupHubView: View {
         let alert = NSAlert()
         alert.messageText = isSwedish ? "Kopierat!" : "Copied!"
         alert.informativeText = isSwedish
-            ? "Klistra in i Terminal och tryck Enter. Aktivera sedan Memento Capture i Screen Recording och starta om appen."
-            : "Paste in Terminal and press Enter. Then enable Memento Capture in Screen Recording and restart the app."
+            ? "Klistra in i Terminal och tryck Enter. Aktivera sedan Memento Capture i Screen Recording. Appen startar om automatiskt när behörigheten registreras."
+            : "Paste in Terminal and press Enter. Then enable Memento Capture in Screen Recording. The app will restart automatically once the permission is detected."
         alert.alertStyle = .informational
         alert.runModal()
+    }
+
+    private func beginAutomaticRelaunchAfterPermissionGrant() {
+        guard !relaunchingAfterPermissionGrant else { return }
+
+        relaunchingAfterPermissionGrant = true
+        repairStatusIsError = false
+        repairStatusMessage = isSwedish
+            ? "Behörighet registrerad. Startar om Memento Capture automatiskt..."
+            : "Permission detected. Restarting Memento Capture automatically..."
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            let failureMessage = isSwedish
+                ? "Behörighet är aktiv, men appen kunde inte starta om automatiskt. Starta om Memento Capture manuellt."
+                : "Permission is active, but the app could not restart automatically. Please restart Memento Capture manually."
+            let didRelaunch = AppRelauncher.relaunch(
+                appPath: Bundle.main.bundleURL.path,
+                failureMessage: failureMessage
+            )
+            if !didRelaunch {
+                relaunchingAfterPermissionGrant = false
+                repairStatusIsError = true
+                repairStatusMessage = failureMessage
+            }
+        }
     }
 }

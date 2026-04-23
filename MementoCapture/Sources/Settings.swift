@@ -1,11 +1,15 @@
 import Foundation
+import ServiceManagement
 
 /// App settings stored in UserDefaults
 @MainActor
 final class Settings: ObservableObject {
     static let shared = Settings()
     
-    private let defaults = UserDefaults.standard
+    private let defaults = AppVersionInfo.sharedDefaults
+    private var isSynchronizingAutoStart = false
+    // Preserve legacy exclusion defaults for users who still run the standalone timeline host.
+    private static let legacyStandaloneTimelineNames = ["Memento Timeline", "MementoTimeline"]
     
     // Keys
     private enum Key: String {
@@ -52,8 +56,11 @@ final class Settings: ObservableObject {
     
     @Published var autoStart: Bool {
         didSet { 
-            defaults.set(autoStart, forKey: Key.autoStart.rawValue)
-            updateLaunchAgent()
+            guard !isSynchronizingAutoStart else {
+                return
+            }
+
+            persistAutoStartPreference(autoStart)
         }
     }
     
@@ -72,8 +79,8 @@ final class Settings: ObservableObject {
     // MARK: - Init
     
     private init() {
-        let defaultPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/memento").path
+        let defaultPath = AppVersionInfo.defaultStoragePath
+        let storedAutoStart = defaults.bool(forKey: Key.autoStart.rawValue)
         
         // Load from UserDefaults with defaults
         self.captureInterval = defaults.object(forKey: Key.captureInterval.rawValue) as? Double ?? 2.0
@@ -82,41 +89,86 @@ final class Settings: ObservableObject {
         self.pauseDuringVideo = defaults.object(forKey: Key.pauseDuringVideo.rawValue) as? Bool ?? true
         self.pauseDuringPrivateBrowsing = defaults.object(forKey: Key.pauseDuringPrivateBrowsing.rawValue) as? Bool ?? true
         self.clipboardMonitoring = defaults.bool(forKey: Key.clipboardMonitoring.rawValue)
-        self.autoStart = defaults.bool(forKey: Key.autoStart.rawValue)
+        self.autoStart = Self.resolveAutoStartPreference(defaultsValue: storedAutoStart)
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7
-        self.excludedApps = defaults.stringArray(forKey: Key.excludedApps.rawValue) ?? ["Memento Timeline", "MementoTimeline"]
-        self.storagePath = defaults.string(forKey: Key.storagePath.rawValue) ?? defaultPath
+        self.excludedApps = defaults.stringArray(forKey: Key.excludedApps.rawValue) ?? Self.legacyStandaloneTimelineNames
+        if AppVersionInfo.isAppStoreDistribution {
+            self.storagePath = defaultPath
+            defaults.set(defaultPath, forKey: Key.storagePath.rawValue)
+        } else {
+            self.storagePath = defaults.string(forKey: Key.storagePath.rawValue) ?? defaultPath
+        }
 
         // Ensure clipboard capture state is restored on app launch.
         ClipboardCapture.shared.isEnabled = self.clipboardMonitoring
+
+        reconcileAutoStartRegistrationIfNeeded()
+    }
+
+    var usesSystemManagedAutoStart: Bool { true }
+
+    var supportsCustomStorageLocation: Bool {
+        !AppVersionInfo.isAppStoreDistribution
     }
     
-    // MARK: - LaunchAgent
-    
-    private func updateLaunchAgent() {
-        let launchAgentPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/com.memento.capture.plist")
-        
-        if autoStart {
-            // Create LaunchAgent plist
-            let plist: [String: Any] = [
-                "Label": "com.memento.capture",
-                "ProgramArguments": ["/Applications/Memento Capture.app/Contents/MacOS/memento-capture"],
-                "RunAtLoad": true,
-                "KeepAlive": false
-            ]
-            
-            try? FileManager.default.createDirectory(
-                at: launchAgentPath.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            
-            (plist as NSDictionary).write(to: launchAgentPath, atomically: true)
-            AppLog.info("✅ LaunchAgent created")
+    // MARK: - Legacy LaunchAgent cleanup
+
+    private func cleanupLegacyLaunchAgent() {
+        let plistURL = DirectAutoStartRegistration.launchAgentURL()
+        guard FileManager.default.fileExists(atPath: plistURL.path) else { return }
+        try? FileManager.default.removeItem(at: plistURL)
+        AppLog.info("🧹 Removed legacy LaunchAgent plist")
+    }
+
+    private func persistAutoStartPreference(_ enabled: Bool) {
+        do {
+            try updateAutoStartRegistration(enabled: enabled)
+            defaults.set(enabled, forKey: Key.autoStart.rawValue)
+        } catch {
+            AppLog.error("❌ Could not update auto-start preference: \(error.localizedDescription)")
+            revertAutoStartPreference(to: !enabled)
+        }
+    }
+
+    private func updateAutoStartRegistration(enabled: Bool) throws {
+        let service = SMAppService.mainApp
+        if enabled {
+            try service.register()
         } else {
-            // Remove LaunchAgent
-            try? FileManager.default.removeItem(at: launchAgentPath)
-            AppLog.info("✅ LaunchAgent removed")
+            try service.unregister()
+        }
+        AppLog.info("ℹ️ Main app login-item status: \(String(describing: service.status))")
+
+        cleanupLegacyLaunchAgent()
+    }
+
+    private func reconcileAutoStartRegistrationIfNeeded() {
+        guard autoStart else {
+            return
+        }
+
+        do {
+            try updateAutoStartRegistration(enabled: true)
+        } catch {
+            AppLog.error("❌ Could not reconcile auto-start registration: \(error.localizedDescription)")
+        }
+    }
+
+    private func revertAutoStartPreference(to value: Bool) {
+        isSynchronizingAutoStart = true
+        autoStart = value
+        defaults.set(value, forKey: Key.autoStart.rawValue)
+        isSynchronizingAutoStart = false
+    }
+
+    private static func resolveAutoStartPreference(defaultsValue: Bool) -> Bool {
+        switch SMAppService.mainApp.status {
+        case .enabled, .requiresApproval:
+            return true
+        case .notRegistered, .notFound:
+            return false
+        @unknown default:
+            return defaultsValue
         }
     }
     
@@ -125,11 +177,23 @@ final class Settings: ObservableObject {
     func isAppExcluded(_ appName: String) -> Bool {
         excludedApps.contains { appName.localizedCaseInsensitiveContains($0) }
     }
+
+    private static func normalizedExcludedAppName(_ app: String) -> String {
+        app
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
     
     func addExcludedApp(_ app: String) {
-        if !excludedApps.contains(app) {
-            excludedApps.append(app)
+        let trimmed = app.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let normalizedCandidate = Self.normalizedExcludedAppName(trimmed)
+        guard !excludedApps.contains(where: { Self.normalizedExcludedAppName($0) == normalizedCandidate }) else {
+            return
         }
+
+        excludedApps.append(trimmed)
     }
     
     func removeExcludedApp(_ app: String) {
@@ -137,6 +201,14 @@ final class Settings: ObservableObject {
     }
 
     func updateStoragePath(_ newPath: String) async throws -> StorageMigrator.Result {
+        guard supportsCustomStorageLocation else {
+            throw NSError(
+                domain: "Settings",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Custom storage locations are disabled for the App Store build."]
+            )
+        }
+
         let normalized = URL(fileURLWithPath: newPath).standardizedFileURL.path
         guard !normalized.isEmpty else { return StorageMigrator.Result() }
         guard normalized != storagePath else { return StorageMigrator.Result() }

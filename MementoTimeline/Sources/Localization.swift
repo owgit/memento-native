@@ -42,6 +42,10 @@ enum L {
     static var loadedPrefix: String { isSwedish ? "Laddat" : "Loaded" }
     static var loadingOlderHistory: String { isSwedish ? "Laddar äldre historik..." : "Loading older history..." }
     static var olderHistoryHintShort: String { isSwedish ? "← för äldre" : "← for older" }
+    static var allApps: String { isSwedish ? "Alla" : "All" }
+    static var appFilterHelp: String { isSwedish ? "Filtrera timeline-markörer per app" : "Filter timeline markers by app" }
+    static var previousAppMarkerHelp: String { isSwedish ? "Föregående markör för vald app" : "Previous marker for selected app" }
+    static var nextAppMarkerHelp: String { isSwedish ? "Nästa markör för vald app" : "Next marker for selected app" }
     static func noResults(_ query: String) -> String {
         isSwedish ? "Inga resultat för \"\(query)\"" : "No results for \"\(query)\""
     }

@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 enum AppLog {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.memento.timeline"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.memento.capture.timeline"
     private static let logger = Logger(subsystem: subsystem, category: "app")
 
     static func info(_ message: String) {
