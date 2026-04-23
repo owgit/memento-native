@@ -1,14 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Action Hub search">
-  <rect width="1200" height="640" fill="#111827" />
-  <text x="64" y="90" font-family="Arial, sans-serif" font-size="42" fill="#f9fafb" font-weight="700">Action Hub Search</text>
-  <text x="64" y="130" font-family="Arial, sans-serif" font-size="22" fill="#9ca3af">Keyword + semantic search with keyboard flow</text>
-  <rect x="64" y="190" width="1072" height="74" rx="14" fill="#1f2937" stroke="#374151" />
-  <text x="92" y="238" font-family="Arial, sans-serif" font-size="24" fill="#d1d5db">Search your timeline...</text>
-  <rect x="64" y="300" width="320" height="56" rx="28" fill="#2563eb" />
-  <text x="164" y="337" font-family="Arial, sans-serif" font-size="22" fill="#ffffff">Text</text>
-  <rect x="396" y="300" width="320" height="56" rx="28" fill="#7c3aed" />
-  <text x="482" y="337" font-family="Arial, sans-serif" font-size="22" fill="#ffffff">Semantic</text>
-  <rect x="64" y="390" width="1072" height="190" rx="14" fill="#0b1220" stroke="#1f2937" />
-  <text x="92" y="438" font-family="Arial, sans-serif" font-size="22" fill="#f3f4f6">Result: "API migration guide"</text>
-  <text x="92" y="475" font-family="Arial, sans-serif" font-size="18" fill="#9ca3af">Open selected with Enter, navigate with arrow keys.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-label="Memento Native search experience">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050b14"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#10202c"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="760" fill="url(#bg)"/>
+  <circle cx="1088" cy="192" r="214" fill="#22d3ee" opacity="0.08"/>
+  <circle cx="240" cy="604" r="244" fill="#f59e0b" opacity="0.07"/>
+
+  <g transform="translate(96 82)">
+    <text x="0" y="0" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="46" fill="#f8fafc" font-weight="800">Search by words, meaning, or context</text>
+    <text x="0" y="42" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="21" fill="#94a3b8">Memento turns screenshots into local recall: OCR, semantic search, and app-aware results.</text>
+  </g>
+
+  <g transform="translate(144 172)" filter="url(#shadow)">
+    <rect x="0" y="0" width="1112" height="478" rx="34" fill="url(#glass)" stroke="#334155"/>
+
+    <g transform="translate(42 38)">
+      <rect x="0" y="0" width="1028" height="74" rx="24" fill="#020617" stroke="#1f2937"/>
+      <circle cx="38" cy="37" r="12" fill="#22d3ee"/>
+      <path d="M45 44 L57 56" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+      <text x="76" y="45" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="24" fill="#f8fafc" font-weight="700">Where did I see the Stripe webhook error?</text>
+      <rect x="856" y="18" width="136" height="38" rx="19" fill="#172033" stroke="#334155"/>
+      <text x="884" y="43" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="14" fill="#cbd5e1" font-weight="700">Semantic</text>
+    </g>
+
+    <g transform="translate(42 148)">
+      <rect x="0" y="0" width="318" height="248" rx="24" fill="#0b1220" stroke="#1f2937"/>
+      <text x="26" y="42" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="18" fill="#f8fafc" font-weight="800">Search modes</text>
+      <rect x="26" y="72" width="266" height="44" rx="16" fill="#22d3ee"/>
+      <text x="50" y="100" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="15" fill="#06202a" font-weight="900">Text OCR</text>
+      <rect x="26" y="130" width="266" height="44" rx="16" fill="#111827" stroke="#334155"/>
+      <text x="50" y="158" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="15" fill="#e2e8f0" font-weight="700">Meaning</text>
+      <rect x="26" y="188" width="266" height="44" rx="16" fill="#111827" stroke="#334155"/>
+      <text x="50" y="216" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="15" fill="#e2e8f0" font-weight="700">App + time</text>
+    </g>
+
+    <g transform="translate(392 148)">
+      <rect x="0" y="0" width="678" height="248" rx="24" fill="#0b1220" stroke="#1f2937"/>
+      <g transform="translate(24 24)">
+        <rect x="0" y="0" width="630" height="70" rx="18" fill="#101827" stroke="#1e293b"/>
+        <rect x="18" y="16" width="66" height="38" rx="12" fill="#172033"/>
+        <path d="M31 44 L44 29 L56 41 L66 31 L76 44" fill="none" stroke="#22d3ee" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="106" y="31" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="16" fill="#f8fafc" font-weight="800">Webhook retry notes in browser docs</text>
+        <text x="106" y="53" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="13" fill="#94a3b8">Safari · docs.stripe.com · 12 min ago</text>
+        <rect x="508" y="22" width="90" height="26" rx="13" fill="#164e63"/>
+        <text x="531" y="40" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="12" fill="#67e8f9" font-weight="800">OCR</text>
+      </g>
+      <g transform="translate(24 108)">
+        <rect x="0" y="0" width="630" height="70" rx="18" fill="#101827" stroke="#1e293b"/>
+        <rect x="18" y="16" width="66" height="38" rx="12" fill="#172033"/>
+        <path d="M34 36 C49 20 68 22 78 45" fill="none" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
+        <text x="106" y="31" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="16" fill="#f8fafc" font-weight="800">Terminal log before failing update</text>
+        <text x="106" y="53" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="13" fill="#94a3b8">Terminal · release test · 31 min ago</text>
+        <rect x="486" y="22" width="112" height="26" rx="13" fill="#78350f"/>
+        <text x="509" y="40" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="12" fill="#fbbf24" font-weight="800">Context</text>
+      </g>
+      <g transform="translate(24 192)">
+        <rect x="0" y="0" width="630" height="1" fill="url(#line)" opacity="0.75"/>
+        <text x="0" y="34" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="13" fill="#64748b">All results stay local on your Mac.</text>
+      </g>
+    </g>
+  </g>
 </svg>

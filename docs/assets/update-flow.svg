@@ -1,22 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Update flow">
-  <rect width="1200" height="640" fill="#0b1020" />
-  <text x="60" y="90" font-family="Arial, sans-serif" font-size="42" fill="#f8fafc" font-weight="700">In-app Update Flow</text>
-  <text x="60" y="130" font-family="Arial, sans-serif" font-size="22" fill="#94a3b8">Check -> Download DMG -> Install -> Relaunch</text>
-  <rect x="60" y="200" width="240" height="140" rx="16" fill="#1d4ed8" />
-  <text x="90" y="278" font-family="Arial, sans-serif" font-size="24" fill="#fff">Check release</text>
-  <rect x="360" y="200" width="240" height="140" rx="16" fill="#0f766e" />
-  <text x="384" y="278" font-family="Arial, sans-serif" font-size="24" fill="#fff">Download DMG</text>
-  <rect x="660" y="200" width="240" height="140" rx="16" fill="#7c3aed" />
-  <text x="712" y="278" font-family="Arial, sans-serif" font-size="24" fill="#fff">Install apps</text>
-  <rect x="960" y="200" width="180" height="140" rx="16" fill="#b45309" />
-  <text x="992" y="278" font-family="Arial, sans-serif" font-size="24" fill="#fff">Relaunch</text>
-  <path d="M305 270 L350 270" stroke="#e2e8f0" stroke-width="5" marker-end="url(#arr)"/>
-  <path d="M605 270 L650 270" stroke="#e2e8f0" stroke-width="5" marker-end="url(#arr)"/>
-  <path d="M905 270 L950 270" stroke="#e2e8f0" stroke-width="5" marker-end="url(#arr)"/>
-  <text x="60" y="430" font-family="Arial, sans-serif" font-size="20" fill="#cbd5e1">Requirement: release must include asset named Memento-Native-&lt;version&gt;.dmg</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-label="Memento Native trusted update flow">
   <defs>
-    <marker id="arr" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L7,3 z" fill="#e2e8f0" />
-    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07111f"/>
+      <stop offset="52%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#101827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="26" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
   </defs>
+
+  <rect width="1400" height="760" fill="url(#bg)"/>
+  <path d="M92 574 C250 474 430 596 602 504 C778 410 960 426 1308 492" fill="none" stroke="#164e63" stroke-width="2" opacity="0.56"/>
+
+  <g transform="translate(94 82)">
+    <text x="0" y="0" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="46" fill="#f8fafc" font-weight="800">Install once. Stay current.</text>
+    <text x="0" y="42" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="21" fill="#94a3b8">Developer ID-signed GitHub releases with guarded update checks and a single app bundle.</text>
+  </g>
+
+  <g transform="translate(94 168)" filter="url(#shadow)">
+    <rect x="0" y="0" width="1212" height="456" rx="34" fill="#020617" opacity="0.80" stroke="#334155"/>
+
+    <g transform="translate(56 70)">
+      <rect x="0" y="0" width="232" height="182" rx="26" fill="#0b1220" stroke="#1e293b"/>
+      <circle cx="116" cy="62" r="30" fill="#164e63"/>
+      <path d="M102 62 L114 74 L134 48" fill="none" stroke="#67e8f9" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="38" y="124" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="20" fill="#f8fafc" font-weight="800">Check release</text>
+      <text x="38" y="152" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="14" fill="#94a3b8">Find latest DMG asset</text>
+    </g>
+
+    <g transform="translate(348 70)">
+      <rect x="0" y="0" width="232" height="182" rx="26" fill="#0b1220" stroke="#1e293b"/>
+      <circle cx="116" cy="62" r="30" fill="#78350f"/>
+      <path d="M104 50 L128 50 L128 74 L104 74 Z" fill="none" stroke="#fbbf24" stroke-width="6" stroke-linejoin="round"/>
+      <text x="39" y="124" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="20" fill="#f8fafc" font-weight="800">Verify package</text>
+      <text x="39" y="152" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="14" fill="#94a3b8">Team ID, bundle ID, version</text>
+    </g>
+
+    <g transform="translate(640 70)">
+      <rect x="0" y="0" width="232" height="182" rx="26" fill="#0b1220" stroke="#1e293b"/>
+      <circle cx="116" cy="62" r="30" fill="#14532d"/>
+      <path d="M99 66 L112 79 L137 47" fill="none" stroke="#86efac" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="40" y="124" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="20" fill="#f8fafc" font-weight="800">Install app</text>
+      <text x="40" y="152" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="14" fill="#94a3b8">Replace Memento safely</text>
+    </g>
+
+    <g transform="translate(932 70)">
+      <rect x="0" y="0" width="232" height="182" rx="26" fill="#0b1220" stroke="#1e293b"/>
+      <circle cx="116" cy="62" r="30" fill="#164e63"/>
+      <path d="M104 50 C128 40 143 63 124 79 C108 94 86 78 98 60" fill="none" stroke="#67e8f9" stroke-width="6" stroke-linecap="round"/>
+      <text x="44" y="124" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="20" fill="#f8fafc" font-weight="800">Relaunch</text>
+      <text x="44" y="152" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="14" fill="#94a3b8">Open the new version</text>
+    </g>
+
+    <path d="M302 162 L334 162" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+    <path d="M594 162 L626 162" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+    <path d="M886 162 L918 162" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+
+    <g transform="translate(56 312)">
+      <rect x="0" y="0" width="1108" height="86" rx="24" fill="#0b1220" stroke="#1e293b"/>
+      <rect x="26" y="24" width="38" height="38" rx="12" fill="url(#accent)"/>
+      <text x="84" y="36" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="18" fill="#f8fafc" font-weight="800">Single-app distribution</text>
+      <text x="84" y="63" font-family="Inter, SF Pro Display, Arial, sans-serif" font-size="15" fill="#94a3b8">Users install Memento once. Timeline, search, capture, settings, and update recovery live inside the same experience.</text>
+    </g>
+  </g>
 </svg>

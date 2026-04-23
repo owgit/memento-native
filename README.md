@@ -1,17 +1,19 @@
 # Memento Native
 
-**Your Mac's photographic memory** for **local-first timeline memory**, **OCR search**, and **semantic search**.
+![Memento Native: local-first macOS screen memory with OCR search, app filters, and timeline recall](docs/assets/readme-hero.svg)
 
-Memento Native continuously captures your screen on macOS, extracts text with OCR, and lets you search by keyword or meaning. Data stays on your machine.
+**Find anything you saw on your Mac.**
 
-Privacy-first by design: local storage, no cloud dependency, and user-controlled pause behavior.
+Memento Native is a local-first macOS screen memory app for OCR search, semantic recall, and app-aware timeline browsing. It captures useful visual context in the background, lets you filter history by app or time, and keeps your archive on your Mac.
+
+[Download latest DMG](https://github.com/owgit/memento-native/releases/latest) • [Read the FAQ](docs/FAQ.md) • [View changelog](CHANGELOG.md)
 
 [![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
 [![License](https://img.shields.io/badge/License-PolyForm%20NC-blue.svg)](LICENSE)
 [![Releases](https://img.shields.io/github/v/release/owgit/memento-native)](https://github.com/owgit/memento-native/releases)
 
-> Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento).
+> Native Swift rewrite of [apirrone/Memento](https://github.com/apirrone/Memento), rebuilt as a single Mac app with local storage, private capture controls, and direct GitHub releases.
 
 Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Troubleshooting](docs/FAQ.md#troubleshooting--felsokning) • [Security](SECURITY.md) • [Contributing](CONTRIBUTING.md) • [Releases](https://github.com/owgit/memento-native/releases)
 
@@ -47,9 +49,21 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 
 ## Visual Overview
 
+### App-aware timeline
+
+Filter your visual history by app, jump between relevant markers, and scrub back to the exact moment you need.
+
 ![Memento capture overview: local macOS OCR and timeline memory](docs/assets/capture-overview.svg)
 
+### Search words, meaning, and context
+
+Use OCR, semantic search, app filters, and time windows together instead of digging through screenshots manually.
+
 ![Action Hub search experience with keyword and semantic modes](docs/assets/action-hub-search.svg)
+
+### Direct updates from GitHub
+
+Memento ships as a signed DMG with a clear update path and release notes you can inspect before installing.
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
@@ -61,6 +75,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - Updated DMG/XcodeGen release pipeline, release guard, FAQ, settings docs, security/support docs, and repository templates
 
 Release references:
+- Download: [latest Memento Native DMG](https://github.com/owgit/memento-native/releases/latest)
 - Changelog entry: [v2.0.6 in CHANGELOG](CHANGELOG.md#206---2026-04-24)
 - Release page: [v2.0.6 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.6)
 
