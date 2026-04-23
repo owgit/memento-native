@@ -2,6 +2,13 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.0.6] - 2026-04-24
+
+### Fixed
+- Automatic GitHub updater now installs official Developer ID-signed DMGs even when notarization is unavailable
+- Update installer errors no longer surface successful `codesign` diagnostics as the apparent failure reason
+- Installer verification now checks the downloaded DMG team id, app bundle id, app version, and app signature before copying
+
 ## [2.0.5] - 2026-04-24
 
 ### Added

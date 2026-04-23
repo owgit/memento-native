@@ -20,7 +20,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
 - [Who It's For / För Vem?](#who-its-for--for-vem)
 - [Visual Overview](#visual-overview)
-- [Latest (v2.0.5)](#latest-v205)
+- [Latest (v2.0.6)](#latest-v206)
 - [Install](#install)
 - [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
 - [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
@@ -53,16 +53,15 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
-## Latest (v2.0.5)
+## Latest (v2.0.6)
 
-- Timeline app filtering with app chips, counts, and app-scoped search
-- App-specific scrubber markers with previous/next marker navigation
-- Single-app Timeline runtime path inside the Capture app distribution
-- Settings and release metadata cleanup for the GitHub DMG flow
+- Hotfix for automatic GitHub updates when the DMG is Developer ID-signed but not notarized
+- Installer verification now checks team id, bundle id, version, and app signature before copying
+- Includes the v2.0.5 app-filtered Timeline search and scrubber marker release
 
 Release references:
-- Changelog entry: [v2.0.5 in CHANGELOG](CHANGELOG.md#205---2026-04-24)
-- Release page: [v2.0.5 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.5)
+- Changelog entry: [v2.0.6 in CHANGELOG](CHANGELOG.md#206---2026-04-24)
+- Release page: [v2.0.6 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.6)
 
 ## Install
 
@@ -79,7 +78,7 @@ Release references:
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
 xcodegen generate
-./build-dmg.sh 2.0.5
+./build-dmg.sh 2.0.6
 ```
 
 ## Permissions and Why This Is Needed / Behörigheter och Varför

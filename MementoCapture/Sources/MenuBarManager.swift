@@ -633,7 +633,7 @@ final class MenuBarManager {
         do {
             let dmgPath = try await downloadReleaseDMG(remoteVersion: remoteVersion, from: downloadURL)
             defer { try? FileManager.default.removeItem(at: dmgPath) }
-            try runPrivilegedInstallScript(dmgPath: dmgPath.path)
+            try runPrivilegedInstallScript(dmgPath: dmgPath.path, expectedVersion: remoteVersion)
             showUpdateInstalledAlert()
         } catch {
             showUpdateInstallFailedAlert(error: error, releaseURL: releaseURL)
@@ -666,32 +666,72 @@ final class MenuBarManager {
         return destination
     }
 
-    private func runPrivilegedInstallScript(dmgPath: String) throws {
+    private func runPrivilegedInstallScript(dmgPath: String, expectedVersion: String) throws {
         let fileManager = FileManager.default
         let scriptURL = fileManager.temporaryDirectory.appendingPathComponent("memento-install-\(UUID().uuidString).sh")
+        let cleanExpectedVersion = expectedVersion.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
         let script = """
         #!/bin/bash
         set -euo pipefail
 
         DMG_PATH=\(shellQuote(dmgPath))
-        MOUNT_POINT=""
-        /usr/bin/codesign --verify --verbose=2 "$DMG_PATH" >/dev/null
+        EXPECTED_VERSION=\(shellQuote(cleanExpectedVersion))
+        EXPECTED_BUNDLE_ID="com.memento.capture"
+        EXPECTED_TEAM_ID="7GNHCUW7HN"
+        MOUNT_POINT=$(/usr/bin/mktemp -d /tmp/memento-install.XXXXXX)
+        MOUNTED=0
 
         cleanup() {
-            if [ -n "${MOUNT_POINT:-}" ]; then
+            if [ "${MOUNTED:-0}" = "1" ]; then
                 /usr/bin/hdiutil detach "$MOUNT_POINT" -quiet || true
             fi
+            /bin/rmdir "$MOUNT_POINT" >/dev/null 2>&1 || true
         }
         trap cleanup EXIT
 
-        MOUNT_POINT=$(/usr/bin/hdiutil attach -nobrowse -readonly "$DMG_PATH" | /usr/bin/awk '/\\/Volumes\\// {print substr($0, index($0, "/Volumes/")); exit}')
-        if [ -z "$MOUNT_POINT" ]; then
-            echo "Failed to mount DMG"
+        /usr/bin/codesign --verify --verbose=2 "$DMG_PATH" >/dev/null 2>&1
+        if ! /usr/bin/codesign -dv --verbose=4 "$DMG_PATH" 2>&1 | /usr/bin/grep -Fq "TeamIdentifier=$EXPECTED_TEAM_ID"; then
+            echo "Downloaded DMG is not signed by the expected team."
             exit 1
         fi
 
-        /usr/sbin/spctl -a -vv --type execute "$MOUNT_POINT/Memento Capture.app" >/dev/null 2>&1
-        /usr/bin/ditto "$MOUNT_POINT/Memento Capture.app" "/Applications/Memento Capture.app"
+        /usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_POINT" "$DMG_PATH" >/dev/null
+        MOUNTED=1
+
+        APP_PATH="$MOUNT_POINT/Memento Capture.app"
+        if [ ! -d "$APP_PATH" ]; then
+            echo "Memento Capture.app was not found in the DMG."
+            exit 1
+        fi
+
+        BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")
+        APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist")
+        if [ "$BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
+            echo "Unexpected bundle identifier: $BUNDLE_ID"
+            exit 1
+        fi
+        if [ "$APP_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Unexpected app version: $APP_VERSION"
+            exit 1
+        fi
+
+        /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH" >/dev/null 2>&1
+        if ! /usr/bin/codesign -dv --verbose=4 "$APP_PATH" 2>&1 | /usr/bin/grep -Fq "TeamIdentifier=$EXPECTED_TEAM_ID"; then
+            echo "Memento Capture.app is not signed by the expected team."
+            exit 1
+        fi
+
+        SPCTL_LOG=$(/usr/bin/mktemp /tmp/memento-spctl.XXXXXX)
+        if ! /usr/sbin/spctl -a -vv --type execute "$APP_PATH" >"$SPCTL_LOG" 2>&1; then
+            if ! /usr/bin/grep -Fqi "Unnotarized Developer ID" "$SPCTL_LOG"; then
+                /bin/cat "$SPCTL_LOG"
+                /bin/rm -f "$SPCTL_LOG"
+                exit 1
+            fi
+        fi
+        /bin/rm -f "$SPCTL_LOG"
+
+        /usr/bin/ditto "$APP_PATH" "/Applications/Memento Capture.app"
         """
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
