@@ -3,6 +3,8 @@ import SQLite3
 
 /// Shared storage cleanup utility used by manual cleanup and retention policy.
 enum StorageCleaner {
+    private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
     struct Result {
         let deletedFrames: Int
         let deletedVideos: Int
@@ -37,38 +39,40 @@ enum StorageCleaner {
 
         if deleteAll {
             frameIdsToDelete = fetchFrameIds(db: db, sql: "SELECT id FROM FRAME")
-            execute(db: db, sql: "BEGIN TRANSACTION")
-            execute(db: db, sql: "DELETE FROM EMBEDDING")
-            execute(db: db, sql: "DELETE FROM CONTENT")
-            execute(db: db, sql: "DELETE FROM FRAME")
-            execute(db: db, sql: "COMMIT")
+            guard execute(db: db, sql: "BEGIN TRANSACTION") else {
+                return Result(deletedFrames: 0, deletedVideos: 0)
+            }
+
+            let didDeleteRows = execute(db: db, sql: "DELETE FROM CONTENT_FTS")
+                && execute(db: db, sql: "DELETE FROM EMBEDDING")
+                && execute(db: db, sql: "DELETE FROM CONTENT")
+                && execute(db: db, sql: "DELETE FROM FRAME")
+                && execute(db: db, sql: "COMMIT")
+
+            guard didDeleteRows else {
+                execute(db: db, sql: "ROLLBACK")
+                return Result(deletedFrames: 0, deletedVideos: 0)
+            }
         } else {
             guard let cutoffISO8601 else {
                 return Result(deletedFrames: 0, deletedVideos: 0)
             }
 
-            frameIdsToDelete = fetchFrameIdsOlderThan(db: db, cutoffISO8601: cutoffISO8601)
+            let olderFrameIds = fetchFrameIdsOlderThan(db: db, cutoffISO8601: cutoffISO8601)
+            frameIdsToDelete = wholeVideoFrameIdsToDelete(
+                olderFrameIds,
+                videoRanges: videoRanges
+            )
             guard !frameIdsToDelete.isEmpty else {
                 return Result(deletedFrames: 0, deletedVideos: 0)
             }
 
-            execute(db: db, sql: "BEGIN TRANSACTION")
-            executeWithBoundDate(
-                db: db,
-                sql: "DELETE FROM EMBEDDING WHERE frame_id IN (SELECT id FROM FRAME WHERE time < ?)",
-                cutoffISO8601: cutoffISO8601
-            )
-            executeWithBoundDate(
-                db: db,
-                sql: "DELETE FROM CONTENT WHERE frame_id IN (SELECT id FROM FRAME WHERE time < ?)",
-                cutoffISO8601: cutoffISO8601
-            )
-            executeWithBoundDate(
-                db: db,
-                sql: "DELETE FROM FRAME WHERE time < ?",
-                cutoffISO8601: cutoffISO8601
-            )
-            execute(db: db, sql: "COMMIT")
+            guard execute(db: db, sql: "BEGIN TRANSACTION"),
+                  deleteRows(forFrameIds: frameIdsToDelete, db: db),
+                  execute(db: db, sql: "COMMIT") else {
+                execute(db: db, sql: "ROLLBACK")
+                return Result(deletedFrames: 0, deletedVideos: 0)
+            }
         }
 
         let deletedVideos = deleteVideoFiles(
@@ -115,7 +119,7 @@ enum StorageCleaner {
         }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, cutoffISO8601, -1, nil)
+        sqlite3_bind_text(stmt, 1, cutoffISO8601, -1, SQLITE_TRANSIENT)
 
         while sqlite3_step(stmt) == SQLITE_ROW {
             frameIds.append(Int(sqlite3_column_int(stmt, 0)))
@@ -123,17 +127,55 @@ enum StorageCleaner {
         return frameIds
     }
 
-    private static func executeWithBoundDate(db: OpaquePointer?, sql: String, cutoffISO8601: String) {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+    private static func wholeVideoFrameIdsToDelete(
+        _ frameIds: [Int],
+        videoRanges: [VideoRange]
+    ) -> [Int] {
+        let candidates = Set(frameIds)
+        guard !candidates.isEmpty else { return [] }
 
-        sqlite3_bind_text(stmt, 1, cutoffISO8601, -1, nil)
-        sqlite3_step(stmt)
+        var safeToDelete = candidates
+        for videoRange in videoRanges {
+            let frameIdsInVideo = Set(videoRange.frameIds)
+            let deletedInVideo = frameIdsInVideo.intersection(candidates)
+            guard !deletedInVideo.isEmpty, deletedInVideo.count < frameIdsInVideo.count else {
+                continue
+            }
+
+            safeToDelete.subtract(deletedInVideo)
+        }
+
+        return frameIds.filter { safeToDelete.contains($0) }
     }
 
-    private static func execute(db: OpaquePointer?, sql: String) {
-        sqlite3_exec(db, sql, nil, nil, nil)
+    private static func deleteRows(forFrameIds frameIds: [Int], db: OpaquePointer?) -> Bool {
+        deleteRows(db: db, sql: "DELETE FROM CONTENT_FTS WHERE frame_id = ?", frameIds: frameIds)
+            && deleteRows(db: db, sql: "DELETE FROM EMBEDDING WHERE frame_id = ?", frameIds: frameIds)
+            && deleteRows(db: db, sql: "DELETE FROM CONTENT WHERE frame_id = ?", frameIds: frameIds)
+            && deleteRows(db: db, sql: "DELETE FROM FRAME WHERE id = ?", frameIds: frameIds)
+    }
+
+    private static func deleteRows(db: OpaquePointer?, sql: String, frameIds: [Int]) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+
+        for frameId in frameIds {
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
+            sqlite3_bind_int(stmt, 1, Int32(frameId))
+
+            guard sqlite3_step(stmt) == SQLITE_DONE else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    @discardableResult
+    private static func execute(db: OpaquePointer?, sql: String) -> Bool {
+        sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK
     }
 
     private static func buildVideoRanges(

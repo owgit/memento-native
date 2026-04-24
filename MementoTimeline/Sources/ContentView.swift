@@ -2051,6 +2051,7 @@ struct LiveTextImageView: NSViewRepresentable {
         var analyzer: ImageAnalyzer?
         var overlayView: ImageAnalysisOverlayView?
         var currentImageHash: Int = 0
+        var analysisTask: Task<Void, Never>?
         
         override init() {
             super.init()
@@ -2071,16 +2072,26 @@ struct LiveTextImageView: NSViewRepresentable {
             let newHash = image.hashValue
             guard currentImageHash != newHash else { return }
             currentImageHash = newHash
-            
-            Task {
+
+            analysisTask?.cancel()
+            analysisTask = Task { [weak self, weak imageView, weak overlayView] in
                 if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                     let configuration = ImageAnalyzer.Configuration([.text])
                     do {
                         let analysis = try await analyzer.analyze(cgImage, orientation: .up, configuration: configuration)
                         await MainActor.run {
+                            guard let self,
+                                  let imageView,
+                                  let overlayView,
+                                  !Task.isCancelled,
+                                  self.currentImageHash == newHash,
+                                  overlayView.trackingImageView === imageView else {
+                                return
+                            }
                             overlayView.analysis = analysis
                         }
                     } catch {
+                        guard !Task.isCancelled else { return }
                         AppLog.warning("⚠️ Live Text analysis failed: \(error)")
                     }
                 }

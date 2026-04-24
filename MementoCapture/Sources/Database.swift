@@ -8,6 +8,7 @@ final class Database {
     private var insertFrameStatement: OpaquePointer?
     private var insertContentStatement: OpaquePointer?
     private var insertEmbeddingStatement: OpaquePointer?
+    private let contentFTSSchemaVersion = 1
     
     init(path: String) {
         self.path = path
@@ -100,17 +101,66 @@ final class Database {
         execute("CREATE INDEX IF NOT EXISTS idx_content_frame_id ON CONTENT(frame_id)")
         execute("CREATE INDEX IF NOT EXISTS idx_frame_time ON FRAME(time)")
         
-        // Trigger for FTS
+        configureContentFTS()
+
+        prepareStatements()
+    }
+
+    private func configureContentFTS() {
+        execute("DROP TRIGGER IF EXISTS insert_content_fts")
+        execute("DROP TRIGGER IF EXISTS delete_content_fts")
+        execute("DROP TRIGGER IF EXISTS update_content_fts")
+
         execute("""
-            CREATE TRIGGER IF NOT EXISTS insert_content_fts
+            CREATE TRIGGER insert_content_fts
             AFTER INSERT ON CONTENT
             BEGIN
-                INSERT INTO CONTENT_FTS (frame_id, text, x, y, w, h)
-                VALUES (new.frame_id, new.text, new.x, new.y, new.w, new.h);
+                INSERT INTO CONTENT_FTS (rowid, frame_id, text, x, y, w, h)
+                VALUES (new.id, new.frame_id, new.text, new.x, new.y, new.w, new.h);
             END
         """)
 
-        prepareStatements()
+        execute("""
+            CREATE TRIGGER delete_content_fts
+            AFTER DELETE ON CONTENT
+            BEGIN
+                DELETE FROM CONTENT_FTS WHERE rowid = old.id;
+            END
+        """)
+
+        execute("""
+            CREATE TRIGGER update_content_fts
+            AFTER UPDATE ON CONTENT
+            BEGIN
+                DELETE FROM CONTENT_FTS WHERE rowid = old.id;
+                INSERT INTO CONTENT_FTS (rowid, frame_id, text, x, y, w, h)
+                VALUES (new.id, new.frame_id, new.text, new.x, new.y, new.w, new.h);
+            END
+        """)
+
+        rebuildContentFTSIfNeeded()
+    }
+
+    private func rebuildContentFTSIfNeeded() {
+        guard contentFTSSchemaVersionValue() < contentFTSSchemaVersion else { return }
+
+        execute("DELETE FROM CONTENT_FTS")
+        execute("""
+            INSERT INTO CONTENT_FTS (rowid, frame_id, text, x, y, w, h)
+            SELECT id, frame_id, text, x, y, w, h FROM CONTENT
+        """)
+        execute("PRAGMA user_version = \(contentFTSSchemaVersion)")
+    }
+
+    private func contentFTSSchemaVersionValue() -> Int {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else {
+            return 0
+        }
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(statement, 0))
     }
     
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
