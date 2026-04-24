@@ -1254,6 +1254,11 @@ public final class TimelineManager: ObservableObject {
         isLoading = true
     }
 
+    public func seedStartupFrame(_ image: NSImage?) {
+        guard currentFrame == nil, let image else { return }
+        currentFrame = image
+    }
+
     deinit {
         bootstrapTask?.cancel()
         pendingJumpTask?.cancel()
@@ -1507,43 +1512,54 @@ public final class TimelineManager: ObservableObject {
         hasBootstrapped = true
 
         guard totalFrames > 0 else {
-            currentFrame = nil
             currentFrameIndex = 0
             isLoading = false
             return
         }
 
-        let safeIndex = max(0, totalFrames - 1 - (framesPerVideo * 2))
-        currentFrameIndex = safeIndex
-        await loadInitialFrame(at: safeIndex)
+        let latestIndex = max(0, totalFrames - 1)
+        currentFrameIndex = latestIndex
+        await loadInitialFrame(at: latestIndex)
     }
 
     /// Load the initial frame directly (awaited, not fire-and-forget).
     private func loadInitialFrame(at index: Int) async {
-        guard index >= 0 && index < totalFrames else {
+        guard totalFrames > 0 else {
+            currentFrameIndex = 0
             isLoading = false
             return
         }
 
         isLoading = true
+        defer { isLoading = false }
 
-        guard let location = videoLocation(for: index) else {
-            isLoading = false
+        let startIndex = min(max(0, index), totalFrames - 1)
+        let earliestFallbackIndex = max(0, startIndex - (framesPerVideo * 3))
+
+        for candidateIndex in stride(from: startIndex, through: earliestFallbackIndex, by: -1) {
+            guard let image = await initialFrameImage(at: candidateIndex) else { continue }
+            currentFrameIndex = candidateIndex
+            currentFrame = image
             return
+        }
+
+        AppLog.warning("⚠️ Bootstrap frame load failed for latest frames")
+    }
+
+    private func initialFrameImage(at index: Int) async -> NSImage? {
+        guard let location = videoLocation(for: index) else {
+            return nil
         }
 
         let frameId = location.clip.startFrameId + location.frameOffset
         let frameKey = frameCacheKey(for: frameId)
 
         if let cached = frameImageCache.object(forKey: frameKey) {
-            currentFrame = cached
-            isLoading = false
-            return
+            return cached
         }
 
         guard let videoURL = videoFiles[location.clipIndex] else {
-            isLoading = false
-            return
+            return nil
         }
 
         let fallbackFrameDuration = TimelineSettingsAccess.resolveCaptureInterval()
@@ -1553,14 +1569,15 @@ public final class TimelineManager: ObservableObject {
                 from: videoURL,
                 location: location,
                 maxDimension: nil,
-                tolerance: .zero,
+                tolerance: CMTime(seconds: 0.08, preferredTimescale: 600),
                 fallbackFrameDuration: fallbackFrameDuration
             )
-            currentFrame = image
+            frameImageCache.setObject(image, forKey: frameKey)
+            return image
         } catch {
-            AppLog.warning("⚠️ Bootstrap frame load failed: \(error.localizedDescription)")
+            AppLog.warning("⚠️ Bootstrap frame load failed at index \(index): \(error.localizedDescription)")
+            return nil
         }
-        isLoading = false
     }
 
     private func loadVideoFiles(from startDate: Date? = nil, to endDate: Date? = nil) {

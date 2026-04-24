@@ -70,6 +70,7 @@ private struct CommandPaletteEntry: Identifiable {
 }
 
 private enum TimelineVisualTokens {
+    static let windowCornerRadius: CGFloat = 30
     static let searchPanelWidth: CGFloat = 640
     static let searchPanelCornerRadius: CGFloat = 20
     static let searchRowCornerRadius: CGFloat = 8
@@ -141,23 +142,15 @@ public struct ContentView: View {
             // Gradient overlays for controls visibility
             if showControls {
                 VStack {
-                    // Top gradient
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.7), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 120)
-                    
                     Spacer()
                     
                     // Bottom gradient
                     LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.8)],
+                        colors: [Color.clear, Color.black.opacity(0.38)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: 200)
+                    .frame(height: 170)
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -192,7 +185,12 @@ public struct ContentView: View {
                 loadingView
             }
         }
-        .background(Color.black)
+        .background(.clear)
+        .clipShape(RoundedRectangle(cornerRadius: TimelineVisualTokens.windowCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: TimelineVisualTokens.windowCornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .background(WindowAccessor(window: $hostingWindow))
         .focusable(!manager.isSearching && !manager.isCommandPaletteOpen)
         .focusEffectDisabled()
@@ -267,17 +265,12 @@ public struct ContentView: View {
                 showControlsTemporarily()
             }
         }
-        .gesture(
-            TapGesture(count: 2).onEnded {
-                toggleFullscreen()
-            }
-        )
     }
     
     // MARK: - Frame View
     private var frameView: some View {
         ZStack {
-            Color.black
+            frameBackdrop
             
             if let image = manager.currentFrame {
                 // Use a single native image view for both rendering and Live Text
@@ -311,6 +304,30 @@ public struct ContentView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var frameBackdrop: some View {
+        ZStack {
+            Rectangle()
+                .fill(.thinMaterial)
+
+            if let image = manager.currentFrame {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .blur(radius: 34)
+                    .saturation(0.85)
+                    .opacity(0.42)
+                    .clipped()
+            }
+
+            Rectangle()
+                .fill(Color.black.opacity(colorScheme == .dark ? 0.10 : 0.04))
+        }
+        .clipped()
+        .allowsHitTesting(false)
     }
     
     // MARK: - Floating Controls
@@ -1579,16 +1596,7 @@ public struct ContentView: View {
             return nil
         }
 
-        if modifiers.contains([.command, .control]), characters == "f" {
-            toggleFullscreen()
-            return nil
-        }
-
         return event
-    }
-
-    private func toggleFullscreen() {
-        hostingWindow?.toggleFullScreen(nil)
     }
 }
 

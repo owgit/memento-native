@@ -23,6 +23,7 @@ final class CaptureService {
     private var highMotionMediaStreak = 0
     private var videoPauseUntil: Date?
     private var pausedVideoBundleId: String?
+    var lastCapturedImage: CGImage? { previousImage }
     private(set) var lastSuccessfulCaptureAt: Date?
     private var settingsObservation: AnyCancellable?
     private var hasPreparedCaptureResources = false
