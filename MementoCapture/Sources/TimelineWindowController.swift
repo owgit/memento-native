@@ -102,7 +102,7 @@ final class TimelineWindowController {
     private func configureTimelineChrome(for window: NSWindow, shouldCenter: Bool) {
         let contentSize = timelineContentSize(for: window.screen)
 
-        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.title = isSwedish ? "Tidslinje" : "Timeline"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -112,18 +112,18 @@ final class TimelineWindowController {
         window.isOpaque = false
         window.hasShadow = true
         window.isMovableByWindowBackground = true
-        window.collectionBehavior = [.fullScreenNone]
+        window.collectionBehavior = [.fullScreenPrimary]
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
-        window.minSize = contentSize
-        window.maxSize = contentSize
+        window.minSize = NSSize(width: 800, height: 500)
+        window.contentAspectRatio = contentSize
         window.setContentSize(contentSize)
 
         if shouldCenter {
             window.center()
         }
 
-        hideStandardChrome(for: window)
+        placeStandardWindowButtons(in: window)
     }
 
     private func timelineContentSize(for screen: NSScreen?) -> NSSize {
@@ -140,15 +140,46 @@ final class TimelineWindowController {
         )
     }
 
-    private func hideStandardChrome(for window: NSWindow) {
+    private func placeStandardWindowButtons(in window: NSWindow) {
+        guard let contentView = window.contentView else { return }
+
+        let constraintPrefix = "memento.timeline.windowButton."
+        let existingConstraints = contentView.constraints.filter {
+            $0.identifier?.hasPrefix(constraintPrefix) == true
+        }
+        contentView.removeConstraints(existingConstraints)
+
         let buttonTypes: [NSWindow.ButtonType] = [
             .closeButton,
             .miniaturizeButton,
             .zoomButton
         ]
+        let leadingInset: CGFloat = 22
+        let topInset: CGFloat = 16
+        let spacing: CGFloat = 20
 
-        for type in buttonTypes {
-            window.standardWindowButton(type)?.isHidden = true
+        for (index, type) in buttonTypes.enumerated() {
+            guard let button = window.standardWindowButton(type) else { continue }
+
+            button.isHidden = false
+            button.alphaValue = 1
+            button.translatesAutoresizingMaskIntoConstraints = false
+
+            if button.superview !== contentView {
+                button.removeFromSuperview()
+                contentView.addSubview(button)
+            }
+
+            let leading = button.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor,
+                constant: leadingInset + CGFloat(index) * spacing
+            )
+            leading.identifier = "\(constraintPrefix)\(index).leading"
+
+            let top = button.topAnchor.constraint(equalTo: contentView.topAnchor, constant: topInset)
+            top.identifier = "\(constraintPrefix)\(index).top"
+
+            NSLayoutConstraint.activate([leading, top])
         }
     }
 

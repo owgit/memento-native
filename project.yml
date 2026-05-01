@@ -46,11 +46,11 @@ targets:
       base:
         CODE_SIGN_ENTITLEMENTS: MementoCapture/MementoCapture.entitlements
         CODE_SIGN_STYLE: Automatic
-        CURRENT_PROJECT_VERSION: 210
+        CURRENT_PROJECT_VERSION: 211
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Memento/Info.plist
         MACOSX_DEPLOYMENT_TARGET: 14.0
-        MARKETING_VERSION: 2.1.0
+        MARKETING_VERSION: 2.1.1
         MEMENTO_APP_GROUP_IDENTIFIER: ""
         MEMENTO_DISTRIBUTION_CHANNEL: direct
         PRODUCT_BUNDLE_IDENTIFIER: com.memento.capture

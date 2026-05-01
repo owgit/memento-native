@@ -2,6 +2,27 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.1.1] - 2026-05-01
+
+### Fixed
+- Timeline close, minimize, and zoom buttons now remain visible in the release build, matching the local window chrome behavior before the 2.1.0 update.
+- The Timeline window can resize again while preserving the intended aspect ratio and minimum usable size.
+
+### Improved
+- The hidden-toolbar restore control is now a compact 44pt icon button so it blocks less of the Live Text selection area.
+- Timeline now keeps a subtle top chrome band behind the native macOS window controls while the scrubber/app toolbar stays independently hideable.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.1.dmg`
+- Mounted app version/build: `2.1.1` / `211`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `7cc91505b8924c300cca928596c56bc5366ea2407766175266895782e11165c0`
+
 ## [2.1.0] - 2026-05-01
 
 ### Added

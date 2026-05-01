@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-DEFAULT_VERSION="2.1.0"
+DEFAULT_VERSION="2.1.1"
 PROJECT_FILE="Memento.xcodeproj"
 SCHEME="Memento Capture"
 if [ "$#" -gt 1 ]; then
