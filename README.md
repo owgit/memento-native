@@ -22,7 +22,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
 - [Who It's For / För Vem?](#who-its-for--for-vem)
 - [Visual Overview](#visual-overview)
-- [Latest (v2.1.2)](#latest-v212)
+- [Latest (v2.1.3)](#latest-v213)
 - [Install](#install)
 - [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
 - [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
@@ -67,18 +67,17 @@ Memento ships as a signed DMG with a clear update path and release notes you can
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
-## Latest (v2.1.2)
+## Latest (v2.1.3)
 
-- Automatic updates now use a pipefail-safe TeamIdentifier verification, fixing false “not signed by the expected team” failures
-- Automatic update installs now replace the app bundle cleanly so stale local files cannot invalidate the installed signature
-- Timeline window controls are restored in the release build: close, minimize, and zoom stay visible above the hidden toolbar state
-- The hidden-toolbar restore control is now a compact 44pt icon button so it interferes less with Live Text selection
-- Hideable Timeline toolbar: hide the scrubber and app filters so Live Text behind the controls can be selected and copied
+- Timeline now fills the full window after resizing instead of leaving a stale blank area at the top or edges
+- Live Text frame rendering now re-fits to the resized Timeline window, keeping selectable text aligned with the visible image
+- Timeline top chrome now stays translucent over the captured frame instead of creating a solid empty band while resizing
+- Standalone Timeline development builds use the same resize behavior as the embedded Timeline window
 
 Release references:
 - Download: [latest Memento Native DMG](https://github.com/owgit/memento-native/releases/latest)
-- Changelog entry: [v2.1.2 in CHANGELOG](CHANGELOG.md#212---2026-05-01)
-- Release page: [v2.1.2 release notes](https://github.com/owgit/memento-native/releases/tag/v2.1.2)
+- Changelog entry: [v2.1.3 in CHANGELOG](CHANGELOG.md#213---2026-05-01)
+- Release page: [v2.1.3 release notes](https://github.com/owgit/memento-native/releases/tag/v2.1.3)
 
 ## Install
 
@@ -95,7 +94,7 @@ Release references:
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
 xcodegen generate
-./build-dmg.sh 2.1.2
+./build-dmg.sh 2.1.3
 ```
 
 ## Permissions and Why This Is Needed / Behörigheter och Varför

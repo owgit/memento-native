@@ -351,35 +351,18 @@ public struct ContentView: View {
     @ViewBuilder
     private var chromeBandSurface: some View {
         ZStack(alignment: .bottom) {
-            Group {
-                if #available(macOS 26, *) {
-                    Rectangle()
-                        .fill(Color.white.opacity(colorScheme == .dark ? 0.03 : 0.08))
-                        .glassEffect(.regular, in: .rect(cornerRadius: 0))
-                } else {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Rectangle()
-                                .fill(Color.white.opacity(colorScheme == .dark ? 0.03 : 0.10))
-                        )
-                }
-            }
-            .mask(
-                LinearGradient(
-                    colors: [
-                        Color.black,
-                        Color.black,
-                        Color.black.opacity(0.72),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(colorScheme == .dark ? 0.26 : 0.14),
+                    Color.black.opacity(colorScheme == .dark ? 0.10 : 0.05),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
 
             Rectangle()
-                .fill(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.28))
+                .fill(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.18))
                 .frame(height: 0.5)
         }
     }
@@ -2144,6 +2127,68 @@ private extension TimelineManager.SearchResult.MatchType {
 }
 
 // MARK: - Live Text Image View with Zoom
+private final class LiveTextScrollView: NSScrollView {
+    var fitToScreen = true
+    weak var fittedImageView: NSImageView?
+    weak var fittedOverlayView: ImageAnalysisOverlayView?
+
+    override func layout() {
+        super.layout()
+        layoutFitContent()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard !fitToScreen else { return }
+        super.scrollWheel(with: event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        guard !fitToScreen else { return }
+        super.magnify(with: event)
+    }
+
+    func layoutFitContent() {
+        guard fitToScreen,
+              let containerView = documentView,
+              let imageView = fittedImageView else {
+            return
+        }
+
+        let clipSize = contentView.bounds.size
+        guard clipSize.width > 1, clipSize.height > 1 else { return }
+
+        let containerBounds = NSRect(origin: .zero, size: clipSize)
+        containerView.frame = containerBounds
+        imageView.frame = Self.aspectFitRect(for: imageView.image?.size ?? .zero, in: containerBounds)
+        fittedOverlayView?.frame = imageView.frame
+        fittedOverlayView?.trackingImageView = imageView
+        magnification = 1.0
+        contentView.scroll(to: .zero)
+        reflectScrolledClipView(contentView)
+    }
+
+    private static func aspectFitRect(for imageSize: NSSize, in bounds: NSRect) -> NSRect {
+        guard imageSize.width > 0, imageSize.height > 0, bounds.width > 0, bounds.height > 0 else {
+            return bounds
+        }
+
+        let imageAspect = imageSize.width / imageSize.height
+        let boundsAspect = bounds.width / bounds.height
+
+        if imageAspect > boundsAspect {
+            let width = bounds.width
+            let height = width / imageAspect
+            let y = bounds.minY + (bounds.height - height) / 2
+            return NSRect(x: bounds.minX, y: y, width: width, height: height)
+        } else {
+            let height = bounds.height
+            let width = height * imageAspect
+            let x = bounds.minX + (bounds.width - width) / 2
+            return NSRect(x: x, y: bounds.minY, width: width, height: height)
+        }
+    }
+}
+
 struct LiveTextImageView: NSViewRepresentable {
     let image: NSImage
     @Binding var zoomLevel: CGFloat
@@ -2213,15 +2258,18 @@ struct LiveTextImageView: NSViewRepresentable {
     }
     
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        let scrollView = LiveTextScrollView()
+        scrollView.fitToScreen = isFitToScreen
+        scrollView.hasVerticalScroller = !isFitToScreen
+        scrollView.hasHorizontalScroller = !isFitToScreen
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
-        scrollView.allowsMagnification = true
+        scrollView.allowsMagnification = !isFitToScreen
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 5.0
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
         
         let clipView = NSClipView()
         clipView.backgroundColor = .clear
@@ -2238,12 +2286,14 @@ struct LiveTextImageView: NSViewRepresentable {
         imageView.frame = NSRect(origin: .zero, size: image.size)
         containerView.addSubview(imageView)
         containerView.frame = NSRect(origin: .zero, size: image.size)
+        scrollView.fittedImageView = imageView
         
         // Live Text overlay
         if let overlayView = context.coordinator.overlayView {
             overlayView.frame = imageView.frame
             containerView.addSubview(overlayView)
             overlayView.trackingImageView = imageView
+            scrollView.fittedOverlayView = overlayView
             context.coordinator.analyzeImage(image, imageView: imageView)
         }
         
@@ -2252,6 +2302,7 @@ struct LiveTextImageView: NSViewRepresentable {
         if isFitToScreen {
             scrollView.hasVerticalScroller = false
             scrollView.hasHorizontalScroller = false
+            scrollView.allowsMagnification = false
             let clipSize = scrollView.contentView.bounds.size
             containerView.frame = NSRect(origin: .zero, size: clipSize)
             imageView.frame = aspectFitRect(for: image.size, in: containerView.bounds)
@@ -2260,6 +2311,9 @@ struct LiveTextImageView: NSViewRepresentable {
                 overlayView.trackingImageView = imageView
             }
             scrollView.magnification = 1.0
+            DispatchQueue.main.async { [weak scrollView] in
+                scrollView?.layoutFitContent()
+            }
         } else {
             // Set initial magnification low, then fit
             scrollView.magnification = 0.1
@@ -2301,15 +2355,29 @@ struct LiveTextImageView: NSViewRepresentable {
         imageView.imageScaling = .scaleAxesIndependently
         
         let overlayView = context.coordinator.overlayView
+        if let liveTextScrollView = scrollView as? LiveTextScrollView {
+            liveTextScrollView.fitToScreen = isFitToScreen
+            liveTextScrollView.fittedImageView = imageView
+            liveTextScrollView.fittedOverlayView = overlayView
+        }
 
         // Set container to clip view size if fit-to-screen, else native image size.
         if isFitToScreen {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.allowsMagnification = false
             let clipSize = scrollView.contentView.bounds.size
             containerView.frame = NSRect(origin: .zero, size: clipSize)
             imageView.frame = aspectFitRect(for: size, in: containerView.bounds)
             scrollView.magnification = 1.0
             scrollView.contentView.scroll(to: .zero)
+            if let liveTextScrollView = scrollView as? LiveTextScrollView {
+                liveTextScrollView.layoutFitContent()
+            }
         } else {
+            scrollView.hasVerticalScroller = true
+            scrollView.hasHorizontalScroller = true
+            scrollView.allowsMagnification = true
             containerView.frame = NSRect(origin: .zero, size: size)
             imageView.frame = NSRect(origin: .zero, size: size)
             scrollView.magnification = zoomLevel

@@ -3,7 +3,7 @@
 
 set -e
 
-RELEASE_VERSION="${MEMENTO_VERSION:-2.1.2}"
+RELEASE_VERSION="${MEMENTO_VERSION:-2.1.3}"
 APP_NAME="Memento Timeline"
 BUNDLE_ID="com.memento.timeline"
 APP_DIR="/Applications/${APP_NAME}.app"

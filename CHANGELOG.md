@@ -2,6 +2,28 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.1.3] - 2026-05-01
+
+### Fixed
+- Timeline now fills the full window after resizing instead of leaving a stale blank area at the top or edges.
+- Live Text image rendering now re-fits to the resized Timeline window so selectable text stays aligned with the visible frame.
+- Standalone Timeline development builds now use the same full-window resize behavior as the embedded Capture Timeline.
+
+### Improved
+- Timeline top chrome now uses a light translucent gradient over the captured frame instead of a solid material band.
+
+### Verification
+- `swift test` in `MementoCapture`
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoCapture`
+- `swift build -c release` in `MementoTimeline`
+- `swift test --filter TimelineWindowControllerTests` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.3.dmg`
+- Mounted app version/build: `2.1.3` / `213`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `7e981a807c817b6b799e9f6c3dbf1d3fea4d732d41aea2f17c9fdd670b6f425b`
+
 ## [2.1.2] - 2026-05-01
 
 ### Fixed

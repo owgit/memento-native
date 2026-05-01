@@ -53,11 +53,11 @@ final class TimelineWindowController {
                 return
             }
 
-            let rootView = TimelineHostView(manager: manager)
             if let hostingController = existingWindow.contentViewController as? NSHostingController<TimelineHostView> {
-                hostingController.rootView = rootView
+                hostingController.rootView = TimelineHostView(manager: manager)
+                Self.configureTimelineHostingController(hostingController)
             } else {
-                existingWindow.contentViewController = NSHostingController(rootView: rootView)
+                existingWindow.contentViewController = Self.makeTimelineHostingController(manager: manager)
             }
 
             configureTimelineChrome(for: existingWindow, shouldCenter: false)
@@ -65,8 +65,7 @@ final class TimelineWindowController {
             return
         }
 
-        let rootView = TimelineHostView(manager: manager)
-        let hostingController = NSHostingController(rootView: rootView)
+        let hostingController = Self.makeTimelineHostingController(manager: manager)
         let newWindow = NSWindow(contentViewController: hostingController)
         configureTimelineChrome(for: newWindow, shouldCenter: true)
 
@@ -86,6 +85,16 @@ final class TimelineWindowController {
 
         window = newWindow
         activate(newWindow)
+    }
+
+    static func makeTimelineHostingController(manager: TimelineManager) -> NSHostingController<TimelineHostView> {
+        let hostingController = NSHostingController(rootView: TimelineHostView(manager: manager))
+        configureTimelineHostingController(hostingController)
+        return hostingController
+    }
+
+    private static func configureTimelineHostingController(_ hostingController: NSHostingController<TimelineHostView>) {
+        hostingController.sizingOptions = [.minSize]
     }
 
     private func seedLatestCaptureIfAvailable(into manager: TimelineManager) {
@@ -198,12 +207,12 @@ final class TimelineWindowController {
     }
 }
 
-private struct TimelineHostView: View {
+struct TimelineHostView: View {
     @ObservedObject var manager: TimelineManager
 
     var body: some View {
         ContentView()
             .environmentObject(manager)
-            .frame(minWidth: 800, minHeight: 500)
+            .frame(minWidth: 800, maxWidth: .infinity, minHeight: 500, maxHeight: .infinity)
     }
 }

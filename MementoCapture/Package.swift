@@ -22,7 +22,10 @@ let package = Package(
         ),
         .testTarget(
             name: "MementoCaptureTests",
-            dependencies: ["MementoCapture"],
+            dependencies: [
+                "MementoCapture",
+                .product(name: "TimelineFeature", package: "MementoTimeline")
+            ],
             path: "Tests"
         )
     ]
