@@ -111,7 +111,7 @@ public struct ContentView: View {
     @EnvironmentObject var manager: TimelineManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var hostingWindow: NSWindow?
-    @State private var showControls = true
+    @State private var toolbarVisibility = TimelineToolbarVisibility()
     @State private var controlsHideTask: Task<Void, Never>?
     @State private var isHoveringTimeline = false
     @State private var mouseLocation: CGPoint = .zero
@@ -140,7 +140,7 @@ public struct ContentView: View {
                 .ignoresSafeArea()
             
             // Gradient overlays for controls visibility
-            if showControls {
+            if toolbarVisibility.isToolbarVisible {
                 VStack {
                     Spacer()
                     
@@ -160,13 +160,18 @@ public struct ContentView: View {
             VStack {
                 Spacer()
                 
-                if showControls {
+                if toolbarVisibility.isToolbarVisible {
                     floatingControls
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .padding()
-            .animation(.easeInOut(duration: 0.3), value: showControls)
+            .animation(.easeInOut(duration: 0.3), value: toolbarVisibility.isToolbarVisible)
+
+            if toolbarVisibility.shouldShowRevealButton && !manager.isSearching && !manager.isCommandPaletteOpen {
+                revealToolbarButton
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             
             // Search overlay
             if manager.isSearching {
@@ -212,7 +217,7 @@ public struct ContentView: View {
         }
         .onKeyPress(.space) {
             if !manager.isSearching && !manager.isCommandPaletteOpen {
-                showControls.toggle()
+                toggleToolbarVisibility()
                 return .handled
             }
             return .ignored
@@ -421,6 +426,15 @@ public struct ContentView: View {
                         }
                         .buttonStyle(ControlButtonStyle(size: 30, isActive: manager.isCommandPaletteOpen))
                         .help(L.commandPaletteHelp)
+                        .accessibilityLabel(L.commandPaletteHelp)
+
+                        Button(action: hideToolbarManually) {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .buttonStyle(ControlButtonStyle(size: 30))
+                        .help(L.hideToolbarHelp)
+                        .accessibilityLabel(L.hideToolbar)
                     }
                 }
             }
@@ -429,6 +443,30 @@ public struct ContentView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: 720)
         .modifier(GlassBackgroundModifier(cornerRadius: 20))
+    }
+
+    private var revealToolbarButton: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Button(action: showToolbarManually) {
+                HStack(spacing: 7) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(L.showToolbar)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .modifier(GlassBackgroundModifier(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+            .help(L.showToolbarHelp)
+            .accessibilityLabel(L.showToolbar)
+            .padding(.trailing, 18)
+            .padding(.bottom, 18)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
     
     // MARK: - Timeline Scrubber with App Colors
@@ -1251,14 +1289,41 @@ public struct ContentView: View {
     
     // MARK: - Helpers
     private func showControlsTemporarily() {
-        showControls = true
+        guard !toolbarVisibility.isManuallyHidden else { return }
+
+        toolbarVisibility.showTemporarily()
         controlsHideTask?.cancel()
         controlsHideTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard !Task.isCancelled else { return }
             if !isHoveringTimeline {
-                withAnimation { showControls = false }
+                withAnimation { toolbarVisibility.hideAutomatically() }
             }
+        }
+    }
+
+    private func hideToolbarManually() {
+        controlsHideTask?.cancel()
+        controlsHideTask = nil
+        isHoveringTimeline = false
+        clearTimelineHoverPreview()
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toolbarVisibility.hideManually()
+        }
+    }
+
+    private func showToolbarManually() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toolbarVisibility.showManually()
+        }
+    }
+
+    private func toggleToolbarVisibility() {
+        if toolbarVisibility.isToolbarVisible {
+            hideToolbarManually()
+        } else {
+            showToolbarManually()
         }
     }
 

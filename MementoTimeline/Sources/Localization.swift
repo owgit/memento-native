@@ -18,6 +18,18 @@ enum L {
     static var nextFrameHelp: String { isSwedish ? "Nästa (→)" : "Next (→)" }
     static var lastFrameHelp: String { isSwedish ? "Sista (End)" : "Last (End)" }
     static var commandPaletteHelp: String { isSwedish ? "Kommandopalett (⌘F)" : "Command palette (⌘F)" }
+    static var hideToolbar: String { isSwedish ? "Göm toolbar" : "Hide toolbar" }
+    static var showToolbar: String { isSwedish ? "Visa toolbar" : "Show toolbar" }
+    static var hideToolbarHelp: String {
+        isSwedish
+            ? "Göm scrubber och appfilter så texten bakom kan markeras och kopieras"
+            : "Hide scrubber and app filters so text behind them can be selected and copied"
+    }
+    static var showToolbarHelp: String {
+        isSwedish
+            ? "Visa scrubber och appfilter igen"
+            : "Show scrubber and app filters again"
+    }
     
     // MARK: - Controls
     
