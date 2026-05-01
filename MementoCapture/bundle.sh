@@ -3,7 +3,7 @@
 
 set -e
 
-RELEASE_VERSION="${MEMENTO_VERSION:-2.0.6}"
+RELEASE_VERSION="${MEMENTO_VERSION:-2.1.0}"
 APP_NAME="Memento Capture"
 BUNDLE_ID="com.memento.capture"
 APP_DIR="/Applications/${APP_NAME}.app"

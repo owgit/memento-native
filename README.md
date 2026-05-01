@@ -22,7 +22,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
 - [Who It's For / För Vem?](#who-its-for--for-vem)
 - [Visual Overview](#visual-overview)
-- [Latest (v2.0.6)](#latest-v206)
+- [Latest (v2.1.0)](#latest-v210)
 - [Install](#install)
 - [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
 - [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
@@ -67,17 +67,17 @@ Memento ships as a signed DMG with a clear update path and release notes you can
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
-## Latest (v2.0.6)
+## Latest (v2.1.0)
 
-- Single-app distribution: install `Memento Capture.app`; Timeline now opens inside the app from the menu bar
-- App-aware Timeline browsing: app filters, per-app counts, app-scoped search, scrubber markers, and previous/next marker jumps
-- Hardened GitHub updater for the new single-app DMG layout and official Developer ID-signed releases
-- Updated DMG/XcodeGen release pipeline, release guard, FAQ, settings docs, security/support docs, and repository templates
+- Hideable Timeline toolbar: hide the scrubber and app filters so Live Text behind the controls can be selected and copied
+- Timeline startup polish: cleaner window chrome and latest-capture preview while history loads
+- Safer cleanup and search storage maintenance, including FTS trigger/rebuild fixes and video-safe retention cleanup
+- Improved Live Text analysis cancellation to avoid stale OCR overlays during rapid frame changes
 
 Release references:
 - Download: [latest Memento Native DMG](https://github.com/owgit/memento-native/releases/latest)
-- Changelog entry: [v2.0.6 in CHANGELOG](CHANGELOG.md#206---2026-04-24)
-- Release page: [v2.0.6 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.6)
+- Changelog entry: [v2.1.0 in CHANGELOG](CHANGELOG.md#210---2026-05-01)
+- Release page: [v2.1.0 release notes](https://github.com/owgit/memento-native/releases/tag/v2.1.0)
 
 ## Install
 
@@ -94,7 +94,7 @@ Release references:
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
 xcodegen generate
-./build-dmg.sh 2.0.6
+./build-dmg.sh 2.1.0
 ```
 
 ## Permissions and Why This Is Needed / Behörigheter och Varför

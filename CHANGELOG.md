@@ -2,6 +2,31 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.1.0] - 2026-05-01
+
+### Added
+- Hideable Timeline toolbar: the scrubber and app filters can now be hidden so Live Text behind the controls can be selected and copied.
+- A compact `Show toolbar` affordance restores the Timeline controls after they have been manually hidden.
+
+### Improved
+- Timeline window startup now seeds the latest captured frame while history loads.
+- Timeline window chrome is cleaner, rounded, transparent, and better aligned with the embedded single-app experience.
+- README visuals and release positioning are refreshed for the current app-aware Timeline flow.
+
+### Fixed
+- Live Text analysis now cancels stale analysis work when frames change quickly, preventing outdated text overlays from racing the visible frame.
+- Content FTS maintenance now uses stable row IDs, delete/update triggers, and a schema-versioned rebuild path.
+- Storage cleanup now deletes related FTS rows, rolls back failed cleanup transactions, and avoids deleting partial frame sets from active video ranges.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.0.dmg`
+- DMG SHA-256: `d1ae509c1a6b3affd32d50186523fce1bac6e57c07bc7607380b6b2239c36985`
+
 ## [2.0.6] - 2026-04-24
 
 ### Highlights
