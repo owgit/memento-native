@@ -2,6 +2,24 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.1.2] - 2026-05-01
+
+### Fixed
+- Automatic updates no longer fail the app TeamIdentifier check because `grep -q` closed the `codesign` pipe early under `pipefail`.
+- Automatic update installs now replace the existing app bundle instead of overlay-copying into it, preventing stale local files from invalidating the installed signature.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `swift test --filter UpdateInstallerScriptTests` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.2.dmg`
+- Mounted app version/build: `2.1.2` / `212`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `e03abc121e356398027f81ac7a474f2ed18ba4181f067acd4be2e3280c6a2493`
+
 ## [2.1.1] - 2026-05-01
 
 ### Fixed
