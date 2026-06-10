@@ -65,7 +65,42 @@ enum AppVersionInfo {
 }
 
 enum StorageMetrics {
-    static func totalBytes(in directoryURL: URL) -> Int64? {
+    private struct CacheEntry {
+        let bytes: Int64
+        let computedAt: Date
+    }
+
+    @MainActor private static var cache: [String: CacheEntry] = [:]
+    private static let cacheTTL: TimeInterval = 5 * 60
+
+    /// Cached, off-main-thread directory size. Safe to call from UI code.
+    @MainActor
+    static func totalBytes(in directoryURL: URL, bypassCache: Bool = false) async -> Int64? {
+        let key = directoryURL.standardizedFileURL.path
+        if !bypassCache,
+           let entry = cache[key],
+           Date().timeIntervalSince(entry.computedAt) < cacheTTL {
+            return entry.bytes
+        }
+
+        let measured = await Task.detached(priority: .utility) {
+            walkTotalBytes(in: directoryURL)
+        }.value
+
+        if let measured {
+            cache[key] = CacheEntry(bytes: measured, computedAt: Date())
+        }
+        return measured
+    }
+
+    @MainActor
+    static func invalidateCache() {
+        cache.removeAll()
+    }
+
+    /// Synchronous full directory walk. NEVER call on the main thread for real
+    /// storage directories — 100k+ files take 10+ seconds (measured).
+    nonisolated static func walkTotalBytes(in directoryURL: URL) -> Int64? {
         guard let enumerator = FileManager.default.enumerator(
             at: directoryURL,
             includingPropertiesForKeys: [.fileSizeKey]

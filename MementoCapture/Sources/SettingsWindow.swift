@@ -39,6 +39,7 @@ struct SettingsView: View {
     @State private var newExcludedApp = ""
     @State private var isMigratingStorage = false
     @State private var hasLegacyTimelineApp = LegacyTimelineMigration.hasLegacyTimelineApp
+    @State private var folderSizeText: String?
 
     private var normalizedExcludedAppInput: String {
         newExcludedApp.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -188,13 +189,11 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let size = folderSize() {
-                        HStack {
-                            Text(L.currentUsage)
-                            Spacer()
-                            Text(size)
-                                .foregroundColor(.secondary)
-                        }
+                    HStack {
+                        Text(L.currentUsage)
+                        Spacer()
+                        Text(folderSizeText ?? L.computingSize)
+                            .foregroundColor(.secondary)
                     }
                 } header: {
                     Label(L.storage, systemImage: "folder")
@@ -285,6 +284,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 450, minHeight: 620)
         .onAppear(perform: refreshLegacyTimelineStatus)
+        .task { await refreshFolderSize() }
     }
 
     private func addExcludedAppFromInput() {
@@ -329,6 +329,7 @@ struct SettingsView: View {
                     alert.alertStyle = .informational
                     alert.addButton(withTitle: L.ok)
                     alert.runModal()
+                    await refreshFolderSize(bypassCache: true)
                 } catch {
                     let alert = NSAlert()
                     alert.messageText = L.storageMigrationFailed
@@ -341,15 +342,16 @@ struct SettingsView: View {
         }
     }
 
-    private func folderSize() -> String? {
+    private func refreshFolderSize(bypassCache: Bool = false) async {
         let url = URL(fileURLWithPath: settings.storagePath)
-        guard let totalSize = StorageMetrics.totalBytes(in: url) else {
-            return nil
+        guard let totalBytes = await StorageMetrics.totalBytes(in: url, bypassCache: bypassCache) else {
+            folderSizeText = nil
+            return
         }
 
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        return formatter.string(fromByteCount: totalSize)
+        folderSizeText = formatter.string(fromByteCount: totalBytes)
     }
 }
 
@@ -390,6 +392,7 @@ private extension L {
     }
     static var change: String { isSwedish ? "Ändra" : "Change" }
     static var currentUsage: String { isSwedish ? "Använt utrymme" : "Current usage" }
+    static var computingSize: String { isSwedish ? "Beräknar…" : "Computing…" }
     static var storageMigrationDone: String { isSwedish ? "Migrering klar" : "Migration complete" }
     static func storageMigrationSummary(_ path: String, _ moved: Int, _ copied: Int, _ renamed: Int, _ skipped: Int) -> String {
         if isSwedish {

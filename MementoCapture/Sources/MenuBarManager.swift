@@ -828,11 +828,35 @@ final class MenuBarManager {
         let cachePath = Settings.shared.storageURL
         let dbPath = cachePath.appendingPathComponent("memento.db").path
         let displayPath = (cachePath.path as NSString).abbreviatingWithTildeInPath
-        
+
+        Task { @MainActor in
+            let counts = await Task.detached(priority: .userInitiated) {
+                Self.fetchFrameAndEmbeddingCounts(dbPath: dbPath)
+            }.value
+
+            var diskUsage = "?"
+            if let totalSize = await StorageMetrics.totalBytes(in: cachePath) {
+                if totalSize > 1_000_000_000 {
+                    diskUsage = String(format: "%.1f GB", Double(totalSize) / 1_000_000_000)
+                } else {
+                    diskUsage = String(format: "%.0f MB", Double(totalSize) / 1_000_000)
+                }
+            }
+
+            presentStatsAlert(
+                frameCount: counts.frames,
+                embeddingCount: counts.embeddings,
+                diskUsage: diskUsage,
+                displayPath: displayPath,
+                cachePath: cachePath
+            )
+        }
+    }
+
+    nonisolated private static func fetchFrameAndEmbeddingCounts(dbPath: String) -> (frames: Int, embeddings: Int) {
         var frameCount = 0
         var embeddingCount = 0
-        var diskUsage = "?"
-        
+
         var db: OpaquePointer?
         if sqlite3_open(dbPath, &db) == SQLITE_OK {
             var stmt: OpaquePointer?
@@ -850,15 +874,11 @@ final class MenuBarManager {
             }
             sqlite3_close(db)
         }
-        
-        if let totalSize = StorageMetrics.totalBytes(in: cachePath) {
-            if totalSize > 1_000_000_000 {
-                diskUsage = String(format: "%.1f GB", Double(totalSize) / 1_000_000_000)
-            } else {
-                diskUsage = String(format: "%.0f MB", Double(totalSize) / 1_000_000)
-            }
-        }
-        
+
+        return (frameCount, embeddingCount)
+    }
+
+    private func presentStatsAlert(frameCount: Int, embeddingCount: Int, diskUsage: String, displayPath: String, cachePath: URL) {
         let alert = NSAlert()
         alert.messageText = L.statisticsTitle
         alert.informativeText = """
@@ -870,7 +890,7 @@ final class MenuBarManager {
         alert.alertStyle = .informational
         alert.addButton(withTitle: L.ok)
         alert.addButton(withTitle: L.openFolder)
-        
+
         let response = alert.runModal()
         if response == .alertSecondButtonReturn {
             NSWorkspace.shared.open(cachePath)
