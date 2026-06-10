@@ -9,7 +9,7 @@ Set these values in repository settings:
 - Description:
   - `Local-first macOS timeline memory with OCR and semantic search (Swift + ScreenCaptureKit)`
 - Website:
-  - `https://github.com/owgit/memento-native/releases/latest`
+  - `https://owgit.github.io/memento-native/`
 - Topics:
   - `macos`
   - `swift`
@@ -27,6 +27,16 @@ Upload a social preview image aligned with README messaging:
 - Project: `Memento Native`
 - Keywords: `local-first`, `OCR`, `semantic search`, `timeline memory`
 - Recommended size: 1280x640
+
+## GitHub Pages
+
+Publish the download landing page from:
+
+- Source: `Deploy from a branch`
+- Branch: `main`
+- Folder: `/docs`
+
+The landing page entry point is `docs/index.html`, and the primary download CTA points to the latest GitHub Release.
 
 ## Discussions
 

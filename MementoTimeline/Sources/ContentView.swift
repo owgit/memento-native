@@ -71,6 +71,7 @@ private struct CommandPaletteEntry: Identifiable {
 
 private enum TimelineVisualTokens {
     static let windowCornerRadius: CGFloat = 30
+    static let titleBarHeight: CGFloat = 58
     static let searchPanelWidth: CGFloat = 640
     static let searchPanelCornerRadius: CGFloat = 20
     static let searchRowCornerRadius: CGFloat = 8
@@ -155,7 +156,9 @@ public struct ContentView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
             }
-            
+
+            timelineChromeBand
+
             // Controls overlay - only bottom bar
             VStack {
                 Spacer()
@@ -190,6 +193,7 @@ public struct ContentView: View {
                 loadingView
             }
         }
+        .modifier(TimelineGlassContainerModifier(spacing: 28))
         .background(.clear)
         .clipShape(RoundedRectangle(cornerRadius: TimelineVisualTokens.windowCornerRadius, style: .continuous))
         .overlay(
@@ -334,6 +338,35 @@ public struct ContentView: View {
         .clipped()
         .allowsHitTesting(false)
     }
+
+    private var timelineChromeBand: some View {
+        VStack(spacing: 0) {
+            chromeBandSurface
+                .frame(height: TimelineVisualTokens.titleBarHeight)
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var chromeBandSurface: some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(colorScheme == .dark ? 0.26 : 0.14),
+                    Color.black.opacity(colorScheme == .dark ? 0.10 : 0.05),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Rectangle()
+                .fill(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.18))
+                .frame(height: 0.5)
+        }
+    }
     
     // MARK: - Floating Controls
     private var floatingControls: some View {
@@ -442,7 +475,17 @@ public struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: 720)
-        .modifier(GlassBackgroundModifier(cornerRadius: 20))
+        .modifier(
+            GlassBackgroundModifier(
+                cornerRadius: 20,
+                isInteractive: true,
+                fallbackTintOpacity: 0.14,
+                strokeOpacity: 0.16,
+                shadowOpacity: 0.22,
+                shadowRadius: 18,
+                shadowY: 8
+            )
+        )
     }
 
     private var revealToolbarButton: some View {
@@ -458,7 +501,17 @@ public struct ContentView: View {
                 .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .modifier(GlassBackgroundModifier(cornerRadius: 18))
+                .modifier(
+                    GlassBackgroundModifier(
+                        cornerRadius: 18,
+                        isInteractive: true,
+                        fallbackTintOpacity: 0.16,
+                        strokeOpacity: 0.18,
+                        shadowOpacity: 0.24,
+                        shadowRadius: 16,
+                        shadowY: 7
+                    )
+                )
             }
             .buttonStyle(.plain)
             .help(L.showToolbarHelp)
@@ -793,9 +846,15 @@ public struct ContentView: View {
         }
         .frame(width: TimelineVisualTokens.hoverPreviewCardWidth, alignment: .leading)
         .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.78))
+        .modifier(
+            GlassBackgroundModifier(
+                cornerRadius: 12,
+                fallbackTintOpacity: 0.46,
+                strokeOpacity: 0.18,
+                shadowOpacity: 0.28,
+                shadowRadius: 10,
+                shadowY: 5
+            )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -917,7 +976,7 @@ public struct ContentView: View {
     private var searchOverlay: some View {
         ZStack {
             // Backdrop
-            Color.black.opacity(0.6)
+            TimelineOverlayBackdrop()
                 .ignoresSafeArea()
                 .onTapGesture {
                     closeSearchOverlay()
@@ -1148,10 +1207,15 @@ public struct ContentView: View {
                 }
             }
             .frame(width: TimelineVisualTokens.searchPanelWidth)
-            .background(
-                RoundedRectangle(cornerRadius: TimelineVisualTokens.searchPanelCornerRadius)
-                    .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.98)))
-                    .shadow(color: .black.opacity(0.5), radius: 40, y: 15)
+            .modifier(
+                GlassBackgroundModifier(
+                    cornerRadius: TimelineVisualTokens.searchPanelCornerRadius,
+                    fallbackTintOpacity: 0.48,
+                    strokeOpacity: 0.14,
+                    shadowOpacity: 0.38,
+                    shadowRadius: 34,
+                    shadowY: 14
+                )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: TimelineVisualTokens.searchPanelCornerRadius)
@@ -1165,7 +1229,7 @@ public struct ContentView: View {
         let entries = commandPaletteEntries
 
         return ZStack {
-            Color.black.opacity(0.55)
+            TimelineOverlayBackdrop()
                 .ignoresSafeArea()
                 .onTapGesture {
                     closeCommandPalette()
@@ -1258,10 +1322,15 @@ public struct ContentView: View {
                 }
             }
             .frame(width: TimelineVisualTokens.commandPanelWidth)
-            .background(
-                RoundedRectangle(cornerRadius: TimelineVisualTokens.commandPanelCornerRadius)
-                    .fill(Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.98)))
-                    .shadow(color: .black.opacity(0.5), radius: 35, y: 14)
+            .modifier(
+                GlassBackgroundModifier(
+                    cornerRadius: TimelineVisualTokens.commandPanelCornerRadius,
+                    fallbackTintOpacity: 0.48,
+                    strokeOpacity: 0.14,
+                    shadowOpacity: 0.36,
+                    shadowRadius: 32,
+                    shadowY: 13
+                )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: TimelineVisualTokens.commandPanelCornerRadius)
@@ -1281,9 +1350,15 @@ public struct ContentView: View {
                 .foregroundColor(.white.opacity(0.6))
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.ultraThinMaterial)
+        .modifier(
+            GlassBackgroundModifier(
+                cornerRadius: 16,
+                fallbackTintOpacity: 0.36,
+                strokeOpacity: 0.12,
+                shadowOpacity: 0.24,
+                shadowRadius: 18,
+                shadowY: 8
+            )
         )
     }
     
@@ -1666,24 +1741,66 @@ public struct ContentView: View {
 }
 
 // MARK: - Glass Background Modifier (Liquid Glass on macOS 26+, Material on older)
-struct GlassBackgroundModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    
+private struct TimelineGlassContainerModifier: ViewModifier {
+    let spacing: CGFloat
+
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: spacing) {
+                content
+            }
+        } else {
             content
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+private struct TimelineOverlayBackdrop: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.black.opacity(colorScheme == .dark ? 0.34 : 0.22))
+            .background(.ultraThinMaterial)
+            .allowsHitTesting(true)
+    }
+}
+
+struct GlassBackgroundModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    var isInteractive = false
+    var fallbackTintOpacity: Double = 0.12
+    var strokeOpacity: Double = 0.18
+    var shadowOpacity: Double = 0.25
+    var shadowRadius: CGFloat = 16
+    var shadowY: CGFloat = 6
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            if isInteractive {
+                content
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+                    .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
+            } else {
+                content
+                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                    .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
+            }
         } else {
             content
                 .background(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(.regularMaterial)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(.regularMaterial)
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color.black.opacity(fallbackTintOpacity))
+                    }
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(strokeOpacity), lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+                .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
         }
     }
 }
@@ -1717,13 +1834,20 @@ struct ControlButtonView: View {
                     )
             )
             .frame(width: size, height: size)
-            .background(
-                Circle()
-                    .fill(isPressed ? Color.white.opacity(0.4) : (isActive ? Color.cyan.opacity(0.2) : Color.white.opacity(0.1)))
+            .modifier(
+                GlassBackgroundModifier(
+                    cornerRadius: size / 2,
+                    isInteractive: true,
+                    fallbackTintOpacity: isPressed ? 0.30 : (isActive ? 0.20 : 0.10),
+                    strokeOpacity: isPressed ? 0.45 : (isActive ? 0.28 : 0.14),
+                    shadowOpacity: 0.16,
+                    shadowRadius: 8,
+                    shadowY: 3
+                )
             )
             .overlay(
                 Circle()
-                    .stroke(isPressed ? Color.white.opacity(0.7) : Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(isPressed ? Color.white.opacity(0.58) : Color.white.opacity(isActive ? 0.26 : 0.12), lineWidth: 1)
             )
             .scaleEffect(isPressed ? 0.85 : 1.0)
             .animation(.spring(response: 0.15, dampingFraction: 0.6), value: isPressed)
@@ -2100,6 +2224,68 @@ private extension TimelineManager.SearchResult.MatchType {
 }
 
 // MARK: - Live Text Image View with Zoom
+private final class LiveTextScrollView: NSScrollView {
+    var fitToScreen = true
+    weak var fittedImageView: NSImageView?
+    weak var fittedOverlayView: ImageAnalysisOverlayView?
+
+    override func layout() {
+        super.layout()
+        layoutFitContent()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard !fitToScreen else { return }
+        super.scrollWheel(with: event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        guard !fitToScreen else { return }
+        super.magnify(with: event)
+    }
+
+    func layoutFitContent() {
+        guard fitToScreen,
+              let containerView = documentView,
+              let imageView = fittedImageView else {
+            return
+        }
+
+        let clipSize = contentView.bounds.size
+        guard clipSize.width > 1, clipSize.height > 1 else { return }
+
+        let containerBounds = NSRect(origin: .zero, size: clipSize)
+        containerView.frame = containerBounds
+        imageView.frame = Self.aspectFitRect(for: imageView.image?.size ?? .zero, in: containerBounds)
+        fittedOverlayView?.frame = imageView.frame
+        fittedOverlayView?.trackingImageView = imageView
+        magnification = 1.0
+        contentView.scroll(to: .zero)
+        reflectScrolledClipView(contentView)
+    }
+
+    private static func aspectFitRect(for imageSize: NSSize, in bounds: NSRect) -> NSRect {
+        guard imageSize.width > 0, imageSize.height > 0, bounds.width > 0, bounds.height > 0 else {
+            return bounds
+        }
+
+        let imageAspect = imageSize.width / imageSize.height
+        let boundsAspect = bounds.width / bounds.height
+
+        if imageAspect > boundsAspect {
+            let width = bounds.width
+            let height = width / imageAspect
+            let y = bounds.minY + (bounds.height - height) / 2
+            return NSRect(x: bounds.minX, y: y, width: width, height: height)
+        } else {
+            let height = bounds.height
+            let width = height * imageAspect
+            let x = bounds.minX + (bounds.width - width) / 2
+            return NSRect(x: x, y: bounds.minY, width: width, height: height)
+        }
+    }
+}
+
 struct LiveTextImageView: NSViewRepresentable {
     let image: NSImage
     @Binding var zoomLevel: CGFloat
@@ -2169,15 +2355,18 @@ struct LiveTextImageView: NSViewRepresentable {
     }
     
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        let scrollView = LiveTextScrollView()
+        scrollView.fitToScreen = isFitToScreen
+        scrollView.hasVerticalScroller = !isFitToScreen
+        scrollView.hasHorizontalScroller = !isFitToScreen
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
-        scrollView.allowsMagnification = true
+        scrollView.allowsMagnification = !isFitToScreen
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 5.0
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
         
         let clipView = NSClipView()
         clipView.backgroundColor = .clear
@@ -2194,12 +2383,14 @@ struct LiveTextImageView: NSViewRepresentable {
         imageView.frame = NSRect(origin: .zero, size: image.size)
         containerView.addSubview(imageView)
         containerView.frame = NSRect(origin: .zero, size: image.size)
+        scrollView.fittedImageView = imageView
         
         // Live Text overlay
         if let overlayView = context.coordinator.overlayView {
             overlayView.frame = imageView.frame
             containerView.addSubview(overlayView)
             overlayView.trackingImageView = imageView
+            scrollView.fittedOverlayView = overlayView
             context.coordinator.analyzeImage(image, imageView: imageView)
         }
         
@@ -2208,6 +2399,7 @@ struct LiveTextImageView: NSViewRepresentable {
         if isFitToScreen {
             scrollView.hasVerticalScroller = false
             scrollView.hasHorizontalScroller = false
+            scrollView.allowsMagnification = false
             let clipSize = scrollView.contentView.bounds.size
             containerView.frame = NSRect(origin: .zero, size: clipSize)
             imageView.frame = aspectFitRect(for: image.size, in: containerView.bounds)
@@ -2216,6 +2408,9 @@ struct LiveTextImageView: NSViewRepresentable {
                 overlayView.trackingImageView = imageView
             }
             scrollView.magnification = 1.0
+            DispatchQueue.main.async { [weak scrollView] in
+                scrollView?.layoutFitContent()
+            }
         } else {
             // Set initial magnification low, then fit
             scrollView.magnification = 0.1
@@ -2257,15 +2452,29 @@ struct LiveTextImageView: NSViewRepresentable {
         imageView.imageScaling = .scaleAxesIndependently
         
         let overlayView = context.coordinator.overlayView
+        if let liveTextScrollView = scrollView as? LiveTextScrollView {
+            liveTextScrollView.fitToScreen = isFitToScreen
+            liveTextScrollView.fittedImageView = imageView
+            liveTextScrollView.fittedOverlayView = overlayView
+        }
 
         // Set container to clip view size if fit-to-screen, else native image size.
         if isFitToScreen {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.allowsMagnification = false
             let clipSize = scrollView.contentView.bounds.size
             containerView.frame = NSRect(origin: .zero, size: clipSize)
             imageView.frame = aspectFitRect(for: size, in: containerView.bounds)
             scrollView.magnification = 1.0
             scrollView.contentView.scroll(to: .zero)
+            if let liveTextScrollView = scrollView as? LiveTextScrollView {
+                liveTextScrollView.layoutFitContent()
+            }
         } else {
+            scrollView.hasVerticalScroller = true
+            scrollView.hasHorizontalScroller = true
+            scrollView.allowsMagnification = true
             containerView.frame = NSRect(origin: .zero, size: size)
             imageView.frame = NSRect(origin: .zero, size: size)
             scrollView.magnification = zoomLevel

@@ -24,3 +24,9 @@ dist-appstore/
 
 # Cursor
 .cursorrules
+
+# Local agent context
+CLAUDE.md
+
+# Playwright CLI cache
+.playwright-cli/

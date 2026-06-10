@@ -8,7 +8,6 @@ final class Database {
     private var insertFrameStatement: OpaquePointer?
     private var insertContentStatement: OpaquePointer?
     private var insertEmbeddingStatement: OpaquePointer?
-    private let contentFTSSchemaVersion = 1
     
     init(path: String) {
         self.path = path
@@ -138,18 +137,15 @@ final class Database {
             END
         """)
 
-        rebuildContentFTSIfNeeded()
+        markContentFTSMigrationAppliedIfNeeded()
     }
 
-    private func rebuildContentFTSIfNeeded() {
-        guard contentFTSSchemaVersionValue() < contentFTSSchemaVersion else { return }
-
-        execute("DELETE FROM CONTENT_FTS")
-        execute("""
-            INSERT INTO CONTENT_FTS (rowid, frame_id, text, x, y, w, h)
-            SELECT id, frame_id, text, x, y, w, h FROM CONTENT
-        """)
-        execute("PRAGMA user_version = \(contentFTSSchemaVersion)")
+    private func markContentFTSMigrationAppliedIfNeeded() {
+        // A full FTS rebuild can rewrite gigabytes for long-running timelines.
+        // Future inserts/deletes are covered by triggers and StorageCleaner removes
+        // frame-scoped FTS rows explicitly, so do not rebuild at app startup.
+        guard contentFTSSchemaVersionValue() < 1 else { return }
+        execute("PRAGMA user_version = 1")
     }
 
     private func contentFTSSchemaVersionValue() -> Int {

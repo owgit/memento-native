@@ -18,7 +18,7 @@ struct MementoTimelineApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(timelineManager)
-                .frame(minWidth: 800, minHeight: 500)
+                .frame(minWidth: 800, maxWidth: .infinity, minHeight: 500, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1400, height: 900)

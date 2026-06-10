@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Memento Native icon">
+  <rect width="64" height="64" rx="14" fill="#07111f"/>
+  <rect x="13" y="13" width="30" height="30" rx="7" fill="none" stroke="#22c7dc" stroke-width="4"/>
+  <path d="M29 21h11a3 3 0 0 1 3 3v11" fill="none" stroke="#67e8f9" stroke-width="4" stroke-linecap="round"/>
+  <path d="M25 49h15a9 9 0 0 0 9-9V25" fill="none" stroke="#f2a83b" stroke-width="4" stroke-linecap="round"/>
+</svg>
