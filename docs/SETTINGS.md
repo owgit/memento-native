@@ -90,6 +90,14 @@ Default: `7 days`
 
 **SV:** Styr hur länge data sparas innan automatisk rensning.
 
+### Max storage size
+
+Default: `0` (no limit)
+
+**EN:** Hard cap in GB. When total usage exceeds the cap, the oldest whole video files and their database rows are deleted until usage is back under ~95% of the cap. Enforced at app start and every 6 hours, together with retention (whichever demands more deletion wins).
+
+**SV:** Hård gräns i GB. När total användning överskrider gränsen raderas äldsta hela videofiler och deras databasrader tills användningen är under ~95 % av gränsen. Tillämpas vid appstart och var 6:e timme, tillsammans med retention (den som kräver mest radering vinner).
+
 ### Storage location
 
 Default path: `~/.cache/memento`

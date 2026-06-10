@@ -173,6 +173,19 @@ struct SettingsView: View {
                         }
                     }
 
+                    HStack {
+                        Text(L.maxStorageSize)
+                        Spacer()
+                        TextField("", value: $settings.maxStorageGB, format: .number)
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                        Text("GB")
+                    }
+                    Text(L.maxStorageHint)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L.storageLocation)
                             .font(.subheadline)
@@ -439,6 +452,12 @@ private extension L {
     static var days: String { isSwedish ? "dagar" : "days" }
     static var customRetention: String { isSwedish ? "Anpassad…" : "Custom…" }
     static var customRetentionDaysLabel: String { isSwedish ? "Antal dagar" : "Number of days" }
+    static var maxStorageSize: String { isSwedish ? "Max lagringsstorlek" : "Max storage size" }
+    static var maxStorageHint: String {
+        isSwedish
+            ? "0 = ingen gräns. När gränsen överskrids raderas äldsta inspelningarna automatiskt."
+            : "0 = no limit. When exceeded, the oldest recordings are deleted automatically."
+    }
     static var storageLocation: String { isSwedish ? "Lagringsplats" : "Storage location" }
     static var appStoreStorageHint: String {
         isSwedish

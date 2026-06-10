@@ -24,6 +24,7 @@ final class Settings: ObservableObject {
         case pauseDuringVideo = "pauseDuringVideo"
         case pauseDuringPrivateBrowsing = "pauseDuringPrivateBrowsing"
         case excludeFromBackup = "excludeFromBackup"
+        case maxStorageGB = "maxStorageGB"
     }
     
     // MARK: - Published Properties
@@ -52,6 +53,18 @@ final class Settings: ObservableObject {
         didSet {
             defaults.set(excludeFromBackup, forKey: Key.excludeFromBackup.rawValue)
             StorageProtection.setExcludedFromBackup(excludeFromBackup, on: storageURL)
+        }
+    }
+
+    /// Max total storage in GB. 0 = no limit (default).
+    @Published var maxStorageGB: Int {
+        didSet {
+            let sanitized = max(0, maxStorageGB)
+            if sanitized != maxStorageGB {
+                maxStorageGB = sanitized
+                return
+            }
+            defaults.set(sanitized, forKey: Key.maxStorageGB.rawValue)
         }
     }
     
@@ -100,6 +113,7 @@ final class Settings: ObservableObject {
         self.clipboardMonitoring = defaults.bool(forKey: Key.clipboardMonitoring.rawValue)
         self.autoStart = Self.resolveAutoStartPreference(defaultsValue: storedAutoStart)
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7
+        self.maxStorageGB = defaults.object(forKey: Key.maxStorageGB.rawValue) as? Int ?? 0
         self.excludedApps = defaults.stringArray(forKey: Key.excludedApps.rawValue) ?? Self.legacyStandaloneTimelineNames
         if AppVersionInfo.isAppStoreDistribution {
             self.storagePath = defaultPath

@@ -86,6 +86,68 @@ enum StorageCleaner {
         return Result(deletedFrames: frameIdsToDelete.count, deletedVideos: deletedVideos)
     }
 
+    /// Deletes oldest whole videos (and their DB rows) until total directory
+    /// usage is at or below ~95% of `maxBytes`. The newest video is never
+    /// deleted (the encoder may still be writing to it). `maxBytes <= 0` is
+    /// a no-op. Always call off the main thread — this walks the directory.
+    static func cleanupToFit(
+        maxBytes: Int64,
+        dbPath: String,
+        cachePath: URL,
+        framesPerVideo: Int = 5
+    ) -> Result {
+        guard maxBytes > 0,
+              let currentBytes = StorageMetrics.walkTotalBytes(in: cachePath),
+              currentBytes > maxBytes else {
+            return Result(deletedFrames: 0, deletedVideos: 0)
+        }
+
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else {
+            return Result(deletedFrames: 0, deletedVideos: 0)
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 5000)
+        execute(db: db, sql: "PRAGMA foreign_keys=ON")
+
+        let maxFrameId = fetchMaxFrameId(db: db)
+        let videoRanges = buildVideoRanges(
+            cachePath: cachePath,
+            maxFrameId: maxFrameId,
+            defaultFramesPerVideo: framesPerVideo
+        )
+
+        let targetBytes = Int64(Double(maxBytes) * 0.95)
+        var bytesToFree = currentBytes - targetBytes
+        var deletedFrames = 0
+        var deletedVideos = 0
+
+        // buildVideoRanges returns ranges sorted by start frame id (oldest
+        // first); dropLast() protects the newest, possibly in-progress video.
+        for videoRange in videoRanges.dropLast() {
+            guard bytesToFree > 0 else { break }
+
+            let attributes = try? FileManager.default.attributesOfItem(atPath: videoRange.fileURL.path)
+            let fileSize = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+
+            let frameIds = Array(videoRange.frameIds)
+            guard execute(db: db, sql: "BEGIN TRANSACTION"),
+                  deleteRows(forFrameIds: frameIds, db: db),
+                  execute(db: db, sql: "COMMIT") else {
+                execute(db: db, sql: "ROLLBACK")
+                break
+            }
+            deletedFrames += frameIds.count
+
+            if (try? FileManager.default.removeItem(at: videoRange.fileURL)) != nil {
+                deletedVideos += 1
+                bytesToFree -= fileSize
+            }
+        }
+
+        return Result(deletedFrames: deletedFrames, deletedVideos: deletedVideos)
+    }
+
     private static func fetchFrameIds(db: OpaquePointer?, sql: String) -> [Int] {
         var stmt: OpaquePointer?
         var frameIds: [Int] = []

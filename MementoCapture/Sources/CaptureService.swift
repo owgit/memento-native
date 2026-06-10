@@ -17,6 +17,8 @@ final class CaptureService {
     // State
     private var frameCount = 0
     private var timer: Timer?
+    private var maintenanceTimer: Timer?
+    private static let maintenanceInterval: TimeInterval = 6 * 60 * 60
     private var captureTask: Task<Void, Never>?
     private var captureInFlight = false
     private var previousImage: CGImage?
@@ -51,8 +53,9 @@ final class CaptureService {
         AppLog.info("   Interval: \(captureInterval)s")
         AppLog.info("   Resolution: Auto-detect")
 
-        applyRetentionPolicyIfNeeded()
-        
+        runStorageMaintenance()
+        scheduleMaintenanceTimer()
+
         scheduleCaptureTimer()
 
         // Fire immediately
@@ -63,6 +66,8 @@ final class CaptureService {
         AppLog.info("⏹️  Stopping capture service...")
         timer?.invalidate()
         timer = nil
+        maintenanceTimer?.invalidate()
+        maintenanceTimer = nil
 
         if let captureTask {
             captureTask.cancel()
@@ -603,9 +608,66 @@ final class CaptureService {
         }
     }
 
-    private func applyRetentionPolicyIfNeeded() {
+    private func scheduleMaintenanceTimer() {
+        maintenanceTimer?.invalidate()
+        maintenanceTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.maintenanceInterval,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.runStorageMaintenance()
+            }
+        }
+    }
+
+    /// Retention first, then the size cap — whichever demands more wins.
+    /// One sequential detached task; both cleaners open their own connection.
+    private func runStorageMaintenance() {
+        let dbPath = cachePath.appendingPathComponent("memento.db").path
+        let framesPerVideo = self.framesPerVideo
+        let cachePath = self.cachePath
+        let retentionCutoff = retentionCutoffISO8601IfDue()
+        let maxGB = Settings.shared.maxStorageGB
+        let maxBytes = maxGB > 0 ? Int64(maxGB) * 1_000_000_000 : 0
+
+        guard retentionCutoff != nil || maxBytes > 0 else { return }
+
+        Task.detached(priority: .utility) {
+            if let cutoff = retentionCutoff {
+                let result = StorageCleaner.cleanup(
+                    dbPath: dbPath,
+                    cachePath: cachePath,
+                    cutoffISO8601: cutoff,
+                    deleteAll: false,
+                    framesPerVideo: framesPerVideo
+                )
+                if result.deletedFrames > 0 || result.deletedVideos > 0 {
+                    AppLog.info("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
+                }
+            }
+
+            if maxBytes > 0 {
+                let result = StorageCleaner.cleanupToFit(
+                    maxBytes: maxBytes,
+                    dbPath: dbPath,
+                    cachePath: cachePath,
+                    framesPerVideo: framesPerVideo
+                )
+                if result.deletedFrames > 0 || result.deletedVideos > 0 {
+                    AppLog.info("🧹 Storage limit cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
+                }
+            }
+
+            await MainActor.run { StorageMetrics.invalidateCache() }
+        }
+    }
+
+    /// Returns the retention cutoff if a cleanup is due, else nil.
+    /// Keeps the existing 12h throttle and its UserDefaults timestamp key
+    /// (internal bookkeeping, not a user setting — predates the Settings rule).
+    private func retentionCutoffISO8601IfDue() -> String? {
         let daysToKeep = Settings.shared.retentionDays
-        guard daysToKeep > 0 && daysToKeep < 9999 else { return }
+        guard daysToKeep > 0 && daysToKeep < 9999 else { return nil }
 
         let defaults = UserDefaults.standard
         let lastCleanupKey = "lastRetentionCleanupAt"
@@ -614,31 +676,14 @@ final class CaptureService {
 
         if let lastCleanup = defaults.object(forKey: lastCleanupKey) as? Date,
            now.timeIntervalSince(lastCleanup) < minimumInterval {
-            return
+            return nil
         }
         defaults.set(now, forKey: lastCleanupKey)
 
         guard let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToKeep, to: now) else {
-            return
+            return nil
         }
-        let cutoffString = Self.iso8601Formatter.string(from: cutoffDate)
-        let dbPath = cachePath.appendingPathComponent("memento.db").path
-        let framesPerVideo = self.framesPerVideo
-        let cachePath = self.cachePath
-
-        Task.detached(priority: .utility) {
-            let result = StorageCleaner.cleanup(
-                dbPath: dbPath,
-                cachePath: cachePath,
-                cutoffISO8601: cutoffString,
-                deleteAll: false,
-                framesPerVideo: framesPerVideo
-            )
-
-            if result.deletedFrames > 0 || result.deletedVideos > 0 {
-                AppLog.info("🧹 Retention cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
-            }
-        }
+        return Self.iso8601Formatter.string(from: cutoffDate)
     }
 
     private struct SemanticDocument {
