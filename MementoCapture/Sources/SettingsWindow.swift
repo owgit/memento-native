@@ -40,6 +40,8 @@ struct SettingsView: View {
     @State private var isMigratingStorage = false
     @State private var hasLegacyTimelineApp = LegacyTimelineMigration.hasLegacyTimelineApp
     @State private var folderSizeText: String?
+    @State private var isCustomRetention = false
+    @State private var customRetentionDays = 7
 
     private var normalizedExcludedAppInput: String {
         newExcludedApp.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,15 +144,33 @@ struct SettingsView: View {
                     HStack {
                         Text(L.retentionDays)
                         Spacer()
-                        Picker("", selection: $settings.retentionDays) {
+                        Picker("", selection: retentionSelection) {
                             Text("1 " + L.day).tag(1)
                             Text("3 " + L.days).tag(3)
                             Text("7 " + L.days).tag(7)
                             Text("14 " + L.days).tag(14)
                             Text("30 " + L.days).tag(30)
-                            Text("∞").tag(9999)
+                            Text("∞").tag(RetentionOptions.forever)
+                            Text(L.customRetention).tag(RetentionOptions.customPickerTag)
                         }
-                        .frame(width: 120)
+                        .frame(width: 140)
+                    }
+
+                    if isCustomRetention {
+                        HStack {
+                            Text(L.customRetentionDaysLabel)
+                            Spacer()
+                            TextField("", value: $customRetentionDays, format: .number)
+                                .frame(width: 60)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit(commitCustomRetention)
+                            Stepper("", value: $customRetentionDays, in: RetentionOptions.customRange)
+                                .labelsHidden()
+                                .onChange(of: customRetentionDays) { _, _ in
+                                    commitCustomRetention()
+                                }
+                            Text(L.days)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -286,6 +306,10 @@ struct SettingsView: View {
         .onAppear {
             refreshLegacyTimelineStatus()
             Task { await refreshFolderSize() }
+            if !RetentionOptions.isPreset(settings.retentionDays) {
+                isCustomRetention = true
+                customRetentionDays = settings.retentionDays
+            }
         }
     }
 
@@ -293,6 +317,32 @@ struct SettingsView: View {
         guard canAddExcludedApp else { return }
         settings.addExcludedApp(normalizedExcludedAppInput)
         newExcludedApp = ""
+    }
+
+    private var retentionSelection: Binding<Int> {
+        Binding(
+            get: {
+                isCustomRetention ? RetentionOptions.customPickerTag : settings.retentionDays
+            },
+            set: { newValue in
+                if newValue == RetentionOptions.customPickerTag {
+                    isCustomRetention = true
+                    if !RetentionOptions.isPreset(settings.retentionDays) {
+                        customRetentionDays = settings.retentionDays
+                    }
+                    commitCustomRetention()
+                } else {
+                    isCustomRetention = false
+                    settings.retentionDays = newValue
+                }
+            }
+        )
+    }
+
+    private func commitCustomRetention() {
+        let clamped = RetentionOptions.clampedCustom(customRetentionDays)
+        customRetentionDays = clamped
+        settings.retentionDays = clamped
     }
 
     private func refreshLegacyTimelineStatus() {
@@ -386,6 +436,8 @@ private extension L {
     static var retentionDays: String { isSwedish ? "Behåll data" : "Keep data" }
     static var day: String { isSwedish ? "dag" : "day" }
     static var days: String { isSwedish ? "dagar" : "days" }
+    static var customRetention: String { isSwedish ? "Anpassad…" : "Custom…" }
+    static var customRetentionDaysLabel: String { isSwedish ? "Antal dagar" : "Number of days" }
     static var storageLocation: String { isSwedish ? "Lagringsplats" : "Storage location" }
     static var appStoreStorageHint: String {
         isSwedish

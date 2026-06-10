@@ -83,7 +83,7 @@ Default preserves older Timeline app names for compatibility. Self-capture preve
 
 ### Keep data (retention)
 
-Options: `1, 3, 7, 14, 30 days, ∞`
+Options: `1, 3, 7, 14, 30 days, ∞, custom (1-365 days)`
 Default: `7 days`
 
 **EN:** Controls automatic cleanup horizon.
