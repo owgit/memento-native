@@ -65,6 +65,10 @@ final class Database {
         addColumnIfMissing(table: "FRAME", column: "app_category", definition: "app_category TEXT")
         
         // Content table
+        // ON DELETE RESTRICT (here and on EMBEDDING) makes a same-id frame
+        // REPLACE fail loudly instead of silently re-pairing child rows.
+        // Forward-only: CREATE TABLE IF NOT EXISTS cannot retrofit existing
+        // databases, which keep their original NO ACTION semantics.
         execute("""
             CREATE TABLE IF NOT EXISTS CONTENT (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
