@@ -22,7 +22,7 @@ Quick links: [FAQ](docs/FAQ.md) • [Settings Guide](docs/SETTINGS.md) • [Trou
 - [What Is Memento Native? / Vad Är Memento Native?](#what-is-memento-native--vad-ar-memento-native)
 - [Who It's For / För Vem?](#who-its-for--for-vem)
 - [Visual Overview](#visual-overview)
-- [Latest (v2.0.6)](#latest-v206)
+- [Latest (v2.2.0)](#latest-v220)
 - [Install](#install)
 - [Permissions and Why This Is Needed / Behörigheter och Varför](#permissions-and-why-this-is-needed--behorigheter-och-varfor)
 - [Settings and Tradeoffs / Inställningar och Kompromisser](#settings-and-tradeoffs--installningar-och-kompromisser)
@@ -67,17 +67,17 @@ Memento ships as a signed DMG with a clear update path and release notes you can
 
 ![In-app update flow: check, install, and relaunch](docs/assets/update-flow.svg)
 
-## Latest (v2.0.6)
+## Latest (v2.2.0)
 
-- Single-app distribution: install `Memento Capture.app`; Timeline now opens inside the app from the menu bar
-- App-aware Timeline browsing: app filters, per-app counts, app-scoped search, scrubber markers, and previous/next marker jumps
-- Hardened GitHub updater for the new single-app DMG layout and official Developer ID-signed releases
-- Updated DMG/XcodeGen release pipeline, release guard, FAQ, settings docs, security/support docs, and repository templates
+- Instant Settings: storage usage is computed in the background with caching, so the window opens immediately even with 100k+ captured files
+- New storage controls: custom retention period (1-365 days), max storage size with automatic oldest-first cleanup, and Time Machine backup exclusion
+- Privacy hardening: clipboard capture never stores secrets copied from password managers; the storage directory is locked to owner-only permissions
+- Storage maintenance now runs continuously (at launch and every 6 hours) with enforced database referential integrity on write connections
 
 Release references:
 - Download: [latest Memento Native DMG](https://github.com/owgit/memento-native/releases/latest)
-- Changelog entry: [v2.0.6 in CHANGELOG](CHANGELOG.md#206---2026-04-24)
-- Release page: [v2.0.6 release notes](https://github.com/owgit/memento-native/releases/tag/v2.0.6)
+- Changelog entry: [v2.2.0 in CHANGELOG](CHANGELOG.md#220---2026-06-10)
+- Release page: [v2.2.0 release notes](https://github.com/owgit/memento-native/releases/tag/v2.2.0)
 
 ## Install
 
@@ -94,7 +94,7 @@ Release references:
 git clone https://github.com/owgit/memento-native.git
 cd memento-native
 xcodegen generate
-./build-dmg.sh 2.0.6
+./build-dmg.sh 2.2.0
 ```
 
 ## Permissions and Why This Is Needed / Behörigheter och Varför

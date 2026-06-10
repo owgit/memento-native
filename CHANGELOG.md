@@ -2,6 +2,68 @@
 
 All notable changes to Memento Native will be documented in this file.
 
+## [2.2.0] - 2026-06-10
+
+### Highlights
+- Settings opens instantly: storage usage is computed in the background with a cache instead of blocking the window (10+ seconds on large archives)
+- New storage controls: custom retention period (1-365 days), max storage size with automatic oldest-first cleanup, and Time Machine backup exclusion
+- Clipboard capture never stores secrets copied from password managers (concealed-clipboard filtering)
+- Storage maintenance now runs continuously (at launch and every 6 hours), not only at app start
+
+### Added
+- `Custom…` option in Keep data with a 1-365 day field
+- Max storage size (GB) setting: oldest recordings are deleted automatically when total usage exceeds the cap (0 = no limit, default)
+- `Exclude from Time Machine backups` setting (default on)
+
+### Changed
+- Storage usage in Settings and the Statistics dialog is computed off the main thread with a 5-minute cache
+- Storage directory permissions tightened to owner-only (0700)
+- Retention and the size cap run in one background maintenance pass every 6 hours with overlap protection
+
+### Fixed
+- Settings window no longer freezes on open with large storage directories
+- Clipboard capture skips content marked concealed/transient by password managers
+- Database schema migrations no longer log errors on every launch
+- Foreign key constraints are now enforced on write connections (strict referential integrity for newly created databases)
+
+## [2.1.3] - 2026-05-01
+
+### Fixed
+- Timeline fills the full window after resizing instead of leaving a stale blank area
+- Live Text image rendering re-fits to the resized Timeline window so selectable text stays aligned with the visible frame
+- Standalone Timeline development builds use the same full-window resize behavior as the embedded Timeline
+
+### Improved
+- Timeline top chrome uses a light translucent gradient over the captured frame instead of a solid material band
+
+## [2.1.2] - 2026-05-01
+
+### Fixed
+- Automatic updates no longer fail the app TeamIdentifier check (`grep -q` closed the codesign pipe early under `pipefail`)
+- Automatic update installs replace the existing app bundle instead of overlay-copying into it, preventing stale local files from invalidating the installed signature
+
+## [2.1.1] - 2026-05-01
+
+### Fixed
+- Restored the native macOS close, minimize, and zoom buttons in the release build
+- Timeline window resizes while preserving its aspect ratio and minimum usable size
+
+### Improved
+- Hidden-toolbar restore control is a compact 44pt icon button that blocks less Live Text selection area
+
+## [2.1.0] - 2026-05-01
+
+### Added
+- Hideable Timeline toolbar: the scrubber and app filters can be hidden so Live Text behind the controls can be selected and copied
+- Compact `Show toolbar` affordance restores the Timeline controls after they have been hidden
+
+### Improved
+- Timeline window startup seeds the latest captured frame while history loads
+- Cleaner, rounded, transparent Timeline window chrome
+
+### Fixed
+- Live Text analysis cancels stale work when frames change quickly, preventing outdated text overlays
+
 ## [2.0.6] - 2026-04-24
 
 ### Highlights
