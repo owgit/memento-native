@@ -1,11 +1,11 @@
-# Design: Privacy & Integrity Hardening
+# Design: Privacy, Integrity & Storage Hardening
 
 **Date:** 2026-06-10
 **Status:** Approved by user (scope and design confirmed in session)
 
 ## Context
 
-A code assessment identified four sharp, low-risk weaknesses. This effort fixes all four. Explicitly **out of scope** (tracked as separate future efforts):
+A code assessment identified four sharp, low-risk weaknesses (sections 1–4). During the same session the user reported that the settings window takes a long time to load — root-caused and measured (section 5) — and requested user-configurable retention plus a maximum storage size (sections 6–7). Explicitly **out of scope** (tracked as separate future efforts):
 
 - Full encryption at rest — SQLCipher would violate the zero-external-dependency constraint. The documented stance is: FileVault (system-level) + POSIX 0700 directory permissions + optional Time Machine exclusion. This stance is recorded in an ADR.
 - Semantic search scaling (linear scan over all embeddings).
@@ -69,7 +69,32 @@ The Timeline module reads only; FK enforcement on read connections is irrelevant
 - Each migration `ALTER TABLE` is guarded by `!columnExists(...)`.
 - Net effect: zero SQL error log lines on routine launches; behavior otherwise identical.
 
-## 5. Tests (TDD, existing `MementoCaptureTests` target)
+## 5. Async storage metrics — settings window slow-load fix
+
+**Root cause (measured):** `StorageMetrics.totalBytes(in:)` (`AppRuntimeInfo.swift`) synchronously enumerates the entire storage directory fetching per-file sizes. The user's directory holds 145,047 files / 117 GB; a bare `find` enumeration of it takes 9.3 s, and the FileManager walk with resource values is slower still. It is called (a) inside `SettingsView.body` on the main thread — blocking first paint and re-running on every re-render — and (b) synchronously in `MenuBarManager`'s statistics alert.
+
+- `StorageMetrics` gains `static func totalBytes(in url: URL) async -> Int64?`, wrapping the existing walk in `Task.detached(priority: .utility)` (the established idiom from `switchStoragePath`). The synchronous walk becomes private.
+- Session-level cache keyed by path: last computed bytes + timestamp, TTL 5 minutes. Force-refreshed after a storage migration completes.
+- `SettingsView`: size shown from `@State`, loaded in `.task`; localized "Computing…" placeholder while pending. `body` never computes.
+- `MenuBarManager` statistics action: DB counts + size computed in a background task, alert presented when ready; the menu action returns immediately.
+
+## 6. Custom retention ("keep data")
+
+- The preset picker (1/3/7/14/30/∞) is kept; a new "Custom…" entry reveals a numeric field, 1–365 days, clamped on commit.
+- `Settings.retentionDays` remains `Int`; the `9999` = ∞ sentinel is unchanged. No migration.
+- If the stored value is not a preset, the picker shows "Custom…" with the field pre-filled.
+- The preset↔custom mapping is a pure, testable helper (no view logic in the mapping).
+- New `L` strings (sv/en): "Custom…", days-field label and validation hint.
+
+## 7. Max storage size + periodic maintenance
+
+- New setting `maxStorageGB: Int`, key `"maxStorageGB"`, **default `0` = no limit** — nothing is ever deleted for existing users until they explicitly set a cap. UI: numeric GB field in the storage section with a "0 = no limit" hint.
+- `StorageCleaner.cleanupToFit(maxBytes:dbPath:cachePath:framesPerVideo:) -> Result`: measures current total bytes (same walk, always called off-main), then deletes oldest whole videos (ascending `startFrameId`) plus their DB rows (existing child-first order, FK-safe) until usage ≤ 95 % of the cap (headroom avoids thrashing at the boundary).
+- **Maintenance scheduling:** retention currently runs only at app start (`applyRetentionPolicyIfNeeded` in `start()`), which explains the 117 GB build-up. New: `CaptureService` runs a maintenance pass at start **and every 6 hours** — retention first, then the size cap; whichever demands more deletion wins. The pass runs in `Task.detached(priority: .utility)`.
+- **Write contention:** maintenance now runs while capture inserts continue, so `sqlite3_busy_timeout(5000)` is set on BOTH the main `Database` connection and `StorageCleaner`'s own connection. Capture inserts are millisecond-fast; brief mutual waiting replaces SQLITE_BUSY failures.
+- The DB file itself does not shrink without VACUUM (`auto_vacuum` is off); mp4 files dominate usage, so the cap is measured on the directory total. Documented, accepted drift.
+
+## 8. Tests (TDD, existing `MementoCaptureTests` target)
 
 Written test-first. All use temp paths/named pasteboards; no global state pollution.
 
@@ -77,14 +102,17 @@ Written test-first. All use temp paths/named pasteboards; no global state pollut
 - **DatabaseMigrationTests**: create a legacy-schema database (e.g. `FRAME` without `url` column) at a temp path, then init `Database` on it → column is added; init `Database` twice on a fresh temp path → idempotent, all expected columns present.
 - **StorageCleanerTests**: temp DB seeded with frames/content/embeddings + dummy `.mp4` files; run `cleanup` with cutoff under FK enforcement → expected rows and whole-video files deleted, partial videos retained.
 - **StorageProtectionTests**: temp directory → permissions read back as `0o700`; backup-exclusion flag reads back `true` after set, `false` after clear.
+- **StorageMetricsTests**: async `totalBytes` on a temp directory with files of known sizes → exact sum; second call within TTL returns the cached value.
+- **RetentionMappingTests**: pure mapping helper — preset values map to presets; e.g. 12 maps to custom; clamping (0 → 1, 366 → 365); `9999` stays ∞.
+- **StorageCleanerFitTests**: temp dir + seeded DB + dummy mp4s of known sizes; `cleanupToFit` deletes oldest whole videos until ≤ cap, retains partial videos, and is a no-op when already under the cap.
 
 ## Performance
 
-No hot-path impact above noise: the pasteboard type check and FK lookups on insert are each well under 1 ms. No change to the Performance Budget table beyond a note on the SQLite insert row if measured ≥1 ms.
+No hot-path impact above noise: the pasteboard type check and FK lookups on insert are each well under 1 ms. The storage walk and maintenance pass always run off the main actor at utility priority. No change to the Performance Budget table beyond a note on the SQLite insert row if measured ≥1 ms.
 
 ## Documentation obligations (per CLAUDE.md rules)
 
-- **CLAUDE.md:** add `StorageProtection` to Key Types Reference; note FK enforcement + per-connection pragma in Storage Schema; new Common Gotchas entries (concealed pasteboard types; FK pragma per connection; `PRAGMA table_info` not parameterizable); document the new settings key; correct the stale "no test framework configured" rule to reflect the existing `MementoCaptureTests` target.
-- **ADRs (Obsidian, next sequential numbers):** (1) clipboard concealed-type filtering; (2) storage protection — permissions, backup-exclusion setting, FK enforcement, and the encryption-at-rest stance.
-- **Dev Log (Obsidian):** `## 2026-06-10 — Privacy & integrity hardening`.
-- **docs/SETTINGS.md:** `excludeFromBackup` row.
+- **CLAUDE.md:** add `StorageProtection` to Key Types Reference; note FK enforcement + per-connection pragma in Storage Schema; new Common Gotchas entries (concealed pasteboard types; FK pragma per connection; `PRAGMA table_info` not parameterizable; `StorageMetrics` walk must never run on the main thread; busy_timeout rationale for concurrent maintenance); document the new settings keys (`excludeFromBackup`, `maxStorageGB`); document the 6-hour maintenance schedule in the CaptureService section; correct the stale "no test framework configured" rule to reflect the existing `MementoCaptureTests` target.
+- **ADRs (Obsidian, next sequential numbers):** (1) clipboard concealed-type filtering; (2) storage protection — permissions, backup-exclusion setting, FK enforcement, and the encryption-at-rest stance; (3) storage maintenance — periodic enforcement, size cap with oldest-first eviction, async storage metrics, busy_timeout.
+- **Dev Log (Obsidian):** `## 2026-06-10 — Privacy, integrity & storage hardening`.
+- **docs/SETTINGS.md:** `excludeFromBackup`, custom retention, and `maxStorageGB` rows.
