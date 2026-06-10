@@ -54,11 +54,11 @@ final class Database {
         """)
         
         // Add new columns if they don't exist (migration)
-        execute("ALTER TABLE FRAME ADD COLUMN url TEXT")
-        execute("ALTER TABLE FRAME ADD COLUMN tab_title TEXT")
-        execute("ALTER TABLE FRAME ADD COLUMN app_bundle_id TEXT")
-        execute("ALTER TABLE FRAME ADD COLUMN clipboard TEXT")
-        execute("ALTER TABLE FRAME ADD COLUMN app_category TEXT")
+        addColumnIfMissing(table: "FRAME", column: "url", definition: "url TEXT")
+        addColumnIfMissing(table: "FRAME", column: "tab_title", definition: "tab_title TEXT")
+        addColumnIfMissing(table: "FRAME", column: "app_bundle_id", definition: "app_bundle_id TEXT")
+        addColumnIfMissing(table: "FRAME", column: "clipboard", definition: "clipboard TEXT")
+        addColumnIfMissing(table: "FRAME", column: "app_category", definition: "app_category TEXT")
         
         // Content table
         execute("""
@@ -93,8 +93,8 @@ final class Database {
                 FOREIGN KEY (frame_id) REFERENCES FRAME(id)
             )
         """)
-        execute("ALTER TABLE EMBEDDING ADD COLUMN language TEXT")
-        execute("ALTER TABLE EMBEDDING ADD COLUMN revision INTEGER DEFAULT 0")
+        addColumnIfMissing(table: "EMBEDDING", column: "language", definition: "language TEXT")
+        addColumnIfMissing(table: "EMBEDDING", column: "revision", definition: "revision INTEGER DEFAULT 0")
         
         // Indexes
         execute("CREATE INDEX IF NOT EXISTS idx_content_frame_id ON CONTENT(frame_id)")
@@ -158,7 +158,30 @@ final class Database {
         guard sqlite3_step(statement) == SQLITE_ROW else { return 0 }
         return Int(sqlite3_column_int(statement, 0))
     }
-    
+
+    /// PRAGMA cannot take bound parameters; `table` is always an internal
+    /// constant within this file — never external input.
+    func columnExists(table: String, column: String) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table))", -1, &stmt, nil) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let namePointer = sqlite3_column_text(stmt, 1),
+               String(cString: namePointer) == column {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func addColumnIfMissing(table: String, column: String, definition: String) {
+        guard !columnExists(table: table, column: column) else { return }
+        execute("ALTER TABLE \(table) ADD COLUMN \(definition)")
+    }
+
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private func prepareStatements() {
