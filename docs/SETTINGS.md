@@ -98,6 +98,14 @@ Default path: `~/.cache/memento`
 
 **SV:** Flytta lagringsplats via Settings; migrering sker i appen.
 
+### Exclude from Time Machine backups
+
+Default: `On`
+
+**EN:** Keeps the screen history out of Time Machine backups. Turn off if you want history restorable from backups (at the cost of copying sensitive history to backup disks).
+
+**SV:** Håller skärmhistoriken utanför Time Machine-backuper. Stäng av om du vill kunna återställa historiken från backup (till priset av att känslig historik kopieras till backupdiskar).
+
 ## System Settings / System
 
 ### Start at login

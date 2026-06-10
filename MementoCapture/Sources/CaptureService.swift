@@ -108,6 +108,8 @@ final class CaptureService {
             }.value
 
             cachePath = normalizedPath
+            StorageProtection.applyDirectoryPermissions(to: cachePath)
+            StorageProtection.setExcludedFromBackup(Settings.shared.excludeFromBackup, on: cachePath)
 
             AppLog.info("📦 Storage migrated to: \(cachePath.path)")
             if migrationResult.movedItems > 0 || migrationResult.copiedItems > 0 || migrationResult.conflictRenames > 0 {
@@ -531,6 +533,8 @@ final class CaptureService {
 
         let frameDuration = Settings.shared.captureInterval
         try? FileManager.default.createDirectory(at: cachePath, withIntermediateDirectories: true)
+        StorageProtection.applyDirectoryPermissions(to: cachePath)
+        StorageProtection.setExcludedFromBackup(Settings.shared.excludeFromBackup, on: cachePath)
 
         let databasePath = cachePath.appendingPathComponent("memento.db").path
         let database = Database(path: databasePath)

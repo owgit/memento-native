@@ -23,6 +23,7 @@ final class Settings: ObservableObject {
         case idleThresholdSeconds = "idleThresholdSeconds"
         case pauseDuringVideo = "pauseDuringVideo"
         case pauseDuringPrivateBrowsing = "pauseDuringPrivateBrowsing"
+        case excludeFromBackup = "excludeFromBackup"
     }
     
     // MARK: - Published Properties
@@ -45,6 +46,13 @@ final class Settings: ObservableObject {
 
     @Published var pauseDuringPrivateBrowsing: Bool {
         didSet { defaults.set(pauseDuringPrivateBrowsing, forKey: Key.pauseDuringPrivateBrowsing.rawValue) }
+    }
+
+    @Published var excludeFromBackup: Bool {
+        didSet {
+            defaults.set(excludeFromBackup, forKey: Key.excludeFromBackup.rawValue)
+            StorageProtection.setExcludedFromBackup(excludeFromBackup, on: storageURL)
+        }
     }
     
     @Published var clipboardMonitoring: Bool {
@@ -88,6 +96,7 @@ final class Settings: ObservableObject {
         self.idleThresholdSeconds = defaults.object(forKey: Key.idleThresholdSeconds.rawValue) as? Double ?? 90.0
         self.pauseDuringVideo = defaults.object(forKey: Key.pauseDuringVideo.rawValue) as? Bool ?? true
         self.pauseDuringPrivateBrowsing = defaults.object(forKey: Key.pauseDuringPrivateBrowsing.rawValue) as? Bool ?? true
+        self.excludeFromBackup = defaults.object(forKey: Key.excludeFromBackup.rawValue) as? Bool ?? true
         self.clipboardMonitoring = defaults.bool(forKey: Key.clipboardMonitoring.rawValue)
         self.autoStart = Self.resolveAutoStartPreference(defaultsValue: storedAutoStart)
         self.retentionDays = defaults.object(forKey: Key.retentionDays.rawValue) as? Int ?? 7

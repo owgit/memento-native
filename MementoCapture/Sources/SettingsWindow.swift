@@ -182,6 +182,12 @@ struct SettingsView: View {
                         }
                     }
 
+                    Toggle(L.excludeFromBackup, isOn: $settings.excludeFromBackup)
+                    Text(L.excludeFromBackupHint)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if let size = folderSize() {
                         HStack {
                             Text(L.currentUsage)
@@ -438,4 +444,12 @@ private extension L {
     }
     static var fixPermissionsAfterUpdate: String { isSwedish ? "Öppna Setup Hub" : "Open Setup Hub" }
     static var support: String { isSwedish ? "Stöd" : "Support" }
+    static var excludeFromBackup: String {
+        isSwedish ? "Exkludera från Time Machine-backup" : "Exclude from Time Machine backups"
+    }
+    static var excludeFromBackupHint: String {
+        isSwedish
+            ? "Håller skärmhistoriken borta från backupdiskar. Stäng av om du vill kunna återställa historiken från backup."
+            : "Keeps your screen history off backup disks. Turn off if you want history restorable from backups."
+    }
 }
