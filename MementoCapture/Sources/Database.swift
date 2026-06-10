@@ -35,7 +35,11 @@ final class Database {
         // Enable WAL mode for better concurrency
         execute("PRAGMA journal_mode=WAL")
         execute("PRAGMA synchronous=NORMAL")
-        
+        // Enforce declared FOREIGN KEYs (off by default in SQLite; per connection)
+        execute("PRAGMA foreign_keys=ON")
+        // Maintenance may write concurrently; wait briefly instead of failing with SQLITE_BUSY
+        sqlite3_busy_timeout(db, 5000)
+
         AppLog.info("📊 Database opened: \(path)")
     }
     
@@ -70,10 +74,10 @@ final class Database {
                 y INTEGER NOT NULL,
                 w INTEGER NOT NULL,
                 h INTEGER NOT NULL,
-                FOREIGN KEY (frame_id) REFERENCES FRAME(id)
+                FOREIGN KEY (frame_id) REFERENCES FRAME(id) ON DELETE RESTRICT
             )
         """)
-        
+
         // FTS table for fast text search
         execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS CONTENT_FTS USING fts5(
@@ -90,7 +94,7 @@ final class Database {
                 text_summary TEXT,
                 language TEXT,
                 revision INTEGER DEFAULT 0,
-                FOREIGN KEY (frame_id) REFERENCES FRAME(id)
+                FOREIGN KEY (frame_id) REFERENCES FRAME(id) ON DELETE RESTRICT
             )
         """)
         addColumnIfMissing(table: "EMBEDDING", column: "language", definition: "language TEXT")

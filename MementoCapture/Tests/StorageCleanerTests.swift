@@ -82,6 +82,37 @@ final class StorageCleanerTests: XCTestCase {
         XCTAssertEqual(try scalarCount("CONTENT_FTS", dbPath: dbPath), 5)
     }
 
+    func testCutoffDeletesOnlyWholeOldVideos() throws {
+        let dir = try TestSupport.makeTempDirectory()
+        let dbPath = dir.appendingPathComponent("memento.db").path
+
+        let database = Database(path: dbPath)
+        for id in 1...10 {
+            let time = id <= 5 ? "2020-01-01T00:00:0\(id)Z" : "2030-01-01T00:00:0\(id)Z"
+            XCTAssertTrue(database.insertFrame(
+                frameId: id, windowTitle: "App", time: time, textBlocks: []
+            ))
+        }
+        database.close()
+
+        try Data(count: 1_000).write(to: dir.appendingPathComponent("1.mp4"))
+        try Data(count: 1_000).write(to: dir.appendingPathComponent("6.mp4"))
+
+        let result = StorageCleaner.cleanup(
+            dbPath: dbPath,
+            cachePath: dir,
+            cutoffISO8601: "2025-01-01T00:00:00Z",
+            deleteAll: false,
+            framesPerVideo: 5
+        )
+
+        XCTAssertEqual(result.deletedFrames, 5)
+        XCTAssertEqual(result.deletedVideos, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("1.mp4").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("6.mp4").path))
+        XCTAssertEqual(TestSupport.scalarInt("SELECT COUNT(*) FROM FRAME", dbPath: dbPath), 5)
+    }
+
     private func scalarCount(_ table: String, dbPath: String) throws -> Int {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)

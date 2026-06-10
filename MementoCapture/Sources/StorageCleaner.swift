@@ -29,6 +29,8 @@ enum StorageCleaner {
             return Result(deletedFrames: 0, deletedVideos: 0)
         }
         defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 5000)
+        execute(db: db, sql: "PRAGMA foreign_keys=ON")
 
         let maxFrameId = fetchMaxFrameId(db: db)
         let videoRanges = buildVideoRanges(
