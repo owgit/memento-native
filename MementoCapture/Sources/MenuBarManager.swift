@@ -937,7 +937,8 @@ final class MenuBarManager {
         )
 
         AppLog.info("🗑️ Cleanup: \(result.deletedFrames) frames, \(result.deletedVideos) videos deleted")
-        
+        StorageMetrics.invalidateCache()
+
         let resultAlert = NSAlert()
         resultAlert.messageText = L.cleanDone
         resultAlert.informativeText = L.cleanResult(result.deletedFrames, result.deletedVideos)

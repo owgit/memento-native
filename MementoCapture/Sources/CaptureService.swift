@@ -624,6 +624,10 @@ final class CaptureService {
     /// Retention first, then the size cap — whichever demands more wins.
     /// One sequential detached task; both cleaners open their own connection.
     private func runStorageMaintenance() {
+        // Check in-flight FIRST so an overlapping call can't consume the
+        // retention throttle and then drop the due cleanup.
+        guard !maintenanceInFlight else { return }
+
         let dbPath = cachePath.appendingPathComponent("memento.db").path
         let framesPerVideo = self.framesPerVideo
         let cachePath = self.cachePath
@@ -632,10 +636,6 @@ final class CaptureService {
         let maxBytes = maxGB > 0 ? Int64(maxGB) * 1_000_000_000 : 0
 
         guard retentionCutoff != nil || maxBytes > 0 else { return }
-
-        // One pass at a time: stop()/start() cycles must not overlap a
-        // long-running pass on the same database (bounded over-eviction risk).
-        guard !maintenanceInFlight else { return }
         maintenanceInFlight = true
 
         Task.detached(priority: .utility) {

@@ -322,6 +322,8 @@ struct SettingsView: View {
             if !RetentionOptions.isPreset(settings.retentionDays) {
                 isCustomRetention = true
                 customRetentionDays = settings.retentionDays
+            } else {
+                isCustomRetention = false
             }
         }
     }
