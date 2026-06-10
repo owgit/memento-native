@@ -283,8 +283,10 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minWidth: 450, minHeight: 620)
-        .onAppear(perform: refreshLegacyTimelineStatus)
-        .task { await refreshFolderSize() }
+        .onAppear {
+            refreshLegacyTimelineStatus()
+            Task { await refreshFolderSize() }
+        }
     }
 
     private func addExcludedAppFromInput() {
@@ -345,7 +347,7 @@ struct SettingsView: View {
     private func refreshFolderSize(bypassCache: Bool = false) async {
         let url = URL(fileURLWithPath: settings.storagePath)
         guard let totalBytes = await StorageMetrics.totalBytes(in: url, bypassCache: bypassCache) else {
-            folderSizeText = nil
+            folderSizeText = "—"
             return
         }
 
