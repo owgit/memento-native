@@ -18,4 +18,11 @@ final class RetentionOptionsTests: XCTestCase {
         XCTAssertEqual(RetentionOptions.clampedCustom(365), 365)
         XCTAssertEqual(RetentionOptions.clampedCustom(9000), 365)
     }
+
+    func testSeededCustomValue() {
+        XCTAssertEqual(RetentionOptions.seededCustomValue(from: 30), 30)
+        XCTAssertEqual(RetentionOptions.seededCustomValue(from: 12), 12)
+        XCTAssertEqual(RetentionOptions.seededCustomValue(from: RetentionOptions.forever), 365)
+        XCTAssertEqual(RetentionOptions.seededCustomValue(from: 0), 1)
+    }
 }

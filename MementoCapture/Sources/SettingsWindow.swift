@@ -166,10 +166,10 @@ struct SettingsView: View {
                                 .onSubmit(commitCustomRetention)
                             Stepper("", value: $customRetentionDays, in: RetentionOptions.customRange)
                                 .labelsHidden()
-                                .onChange(of: customRetentionDays) { _, _ in
-                                    commitCustomRetention()
-                                }
                             Text(L.days)
+                        }
+                        .onChange(of: customRetentionDays) { _, _ in
+                            commitCustomRetention()
                         }
                     }
 
@@ -326,11 +326,12 @@ struct SettingsView: View {
             },
             set: { newValue in
                 if newValue == RetentionOptions.customPickerTag {
-                    isCustomRetention = true
-                    if !RetentionOptions.isPreset(settings.retentionDays) {
-                        customRetentionDays = settings.retentionDays
+                    if !isCustomRetention {
+                        // Seed from the current value; never commit on entry so a
+                        // misclick can't silently shrink the retention horizon.
+                        customRetentionDays = RetentionOptions.seededCustomValue(from: settings.retentionDays)
                     }
-                    commitCustomRetention()
+                    isCustomRetention = true
                 } else {
                     isCustomRetention = false
                     settings.retentionDays = newValue

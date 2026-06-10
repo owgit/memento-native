@@ -17,4 +17,11 @@ enum RetentionOptions {
     static func clampedCustom(_ days: Int) -> Int {
         min(max(days, customRange.lowerBound), customRange.upperBound)
     }
+
+    /// Value the custom-days field should start from when entering custom
+    /// mode, given the currently stored retention. Never widens data loss:
+    /// presets seed themselves, ∞ seeds the maximum custom horizon.
+    static func seededCustomValue(from stored: Int) -> Int {
+        stored == forever ? customRange.upperBound : clampedCustom(stored)
+    }
 }
