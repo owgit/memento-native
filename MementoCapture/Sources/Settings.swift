@@ -59,6 +59,7 @@ final class Settings: ObservableObject {
     /// Max total storage in GB. 0 = no limit (default).
     @Published var maxStorageGB: Int {
         didSet {
+            // Negative input re-enters didSet once with the sanitized value, then persists.
             let sanitized = max(0, maxStorageGB)
             if sanitized != maxStorageGB {
                 maxStorageGB = sanitized

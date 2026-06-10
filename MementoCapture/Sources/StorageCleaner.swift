@@ -142,6 +142,8 @@ enum StorageCleaner {
             if (try? FileManager.default.removeItem(at: videoRange.fileURL)) != nil {
                 deletedVideos += 1
                 bytesToFree -= fileSize
+            } else {
+                AppLog.warning("⚠️ Storage limit cleanup: rows deleted but could not remove \(videoRange.fileURL.lastPathComponent); orphaned video remains until a future over-cap pass")
             }
         }
 

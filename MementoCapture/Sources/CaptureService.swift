@@ -18,6 +18,7 @@ final class CaptureService {
     private var frameCount = 0
     private var timer: Timer?
     private var maintenanceTimer: Timer?
+    private var maintenanceInFlight = false
     private static let maintenanceInterval: TimeInterval = 6 * 60 * 60
     private var captureTask: Task<Void, Never>?
     private var captureInFlight = false
@@ -632,6 +633,11 @@ final class CaptureService {
 
         guard retentionCutoff != nil || maxBytes > 0 else { return }
 
+        // One pass at a time: stop()/start() cycles must not overlap a
+        // long-running pass on the same database (bounded over-eviction risk).
+        guard !maintenanceInFlight else { return }
+        maintenanceInFlight = true
+
         Task.detached(priority: .utility) {
             if let cutoff = retentionCutoff {
                 let result = StorageCleaner.cleanup(
@@ -658,7 +664,10 @@ final class CaptureService {
                 }
             }
 
-            await MainActor.run { StorageMetrics.invalidateCache() }
+            await MainActor.run {
+                StorageMetrics.invalidateCache()
+                CaptureService.shared.maintenanceInFlight = false
+            }
         }
     }
 
