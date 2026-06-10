@@ -491,27 +491,12 @@ public struct ContentView: View {
     private var revealToolbarButton: some View {
         ZStack(alignment: .bottomTrailing) {
             Button(action: showToolbarManually) {
-                HStack(spacing: 7) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(L.showToolbar)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .modifier(
-                    GlassBackgroundModifier(
-                        cornerRadius: 18,
-                        isInteractive: true,
-                        fallbackTintOpacity: 0.16,
-                        strokeOpacity: 0.18,
-                        shadowOpacity: 0.24,
-                        shadowRadius: 16,
-                        shadowY: 7
-                    )
-                )
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .foregroundColor(FloatingControlColors.textPrimary(for: colorScheme))
+                    .contentShape(Rectangle())
+                    .modifier(GlassBackgroundModifier(cornerRadius: 22))
             }
             .buttonStyle(.plain)
             .help(L.showToolbarHelp)

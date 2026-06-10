@@ -29,40 +29,88 @@ All notable changes to Memento Native will be documented in this file.
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
-- Timeline fills the full window after resizing instead of leaving a stale blank area
-- Live Text image rendering re-fits to the resized Timeline window so selectable text stays aligned with the visible frame
-- Standalone Timeline development builds use the same full-window resize behavior as the embedded Timeline
+- Timeline now fills the full window after resizing instead of leaving a stale blank area at the top or edges.
+- Live Text image rendering now re-fits to the resized Timeline window so selectable text stays aligned with the visible frame.
+- Standalone Timeline development builds now use the same full-window resize behavior as the embedded Capture Timeline.
 
 ### Improved
-- Timeline top chrome uses a light translucent gradient over the captured frame instead of a solid material band
+- Timeline top chrome now uses a light translucent gradient over the captured frame instead of a solid material band.
+
+### Verification
+- `swift test` in `MementoCapture`
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoCapture`
+- `swift build -c release` in `MementoTimeline`
+- `swift test --filter TimelineWindowControllerTests` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.3.dmg`
+- Mounted app version/build: `2.1.3` / `213`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `7e981a807c817b6b799e9f6c3dbf1d3fea4d732d41aea2f17c9fdd670b6f425b`
 
 ## [2.1.2] - 2026-05-01
 
 ### Fixed
-- Automatic updates no longer fail the app TeamIdentifier check (`grep -q` closed the codesign pipe early under `pipefail`)
-- Automatic update installs replace the existing app bundle instead of overlay-copying into it, preventing stale local files from invalidating the installed signature
+- Automatic updates no longer fail the app TeamIdentifier check because `grep -q` closed the `codesign` pipe early under `pipefail`.
+- Automatic update installs now replace the existing app bundle instead of overlay-copying into it, preventing stale local files from invalidating the installed signature.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `swift test --filter UpdateInstallerScriptTests` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.2.dmg`
+- Mounted app version/build: `2.1.2` / `212`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `e03abc121e356398027f81ac7a474f2ed18ba4181f067acd4be2e3280c6a2493`
 
 ## [2.1.1] - 2026-05-01
 
 ### Fixed
-- Restored the native macOS close, minimize, and zoom buttons in the release build
-- Timeline window resizes while preserving its aspect ratio and minimum usable size
+- Timeline close, minimize, and zoom buttons now remain visible in the release build, matching the local window chrome behavior before the 2.1.0 update.
+- The Timeline window can resize again while preserving the intended aspect ratio and minimum usable size.
 
 ### Improved
-- Hidden-toolbar restore control is a compact 44pt icon button that blocks less Live Text selection area
+- The hidden-toolbar restore control is now a compact 44pt icon button so it blocks less of the Live Text selection area.
+- Timeline now keeps a subtle top chrome band behind the native macOS window controls while the scrubber/app toolbar stays independently hideable.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.1.dmg`
+- Mounted app version/build: `2.1.1` / `211`
+- Mounted app TeamIdentifier: `7GNHCUW7HN`
+- DMG SHA-256: `7cc91505b8924c300cca928596c56bc5366ea2407766175266895782e11165c0`
 
 ## [2.1.0] - 2026-05-01
 
 ### Added
-- Hideable Timeline toolbar: the scrubber and app filters can be hidden so Live Text behind the controls can be selected and copied
-- Compact `Show toolbar` affordance restores the Timeline controls after they have been hidden
+- Hideable Timeline toolbar: the scrubber and app filters can now be hidden so Live Text behind the controls can be selected and copied.
+- A compact `Show toolbar` affordance restores the Timeline controls after they have been manually hidden.
 
 ### Improved
-- Timeline window startup seeds the latest captured frame while history loads
-- Cleaner, rounded, transparent Timeline window chrome
+- Timeline window startup now seeds the latest captured frame while history loads.
+- Timeline window chrome is cleaner, rounded, transparent, and better aligned with the embedded single-app experience.
+- README visuals and release positioning are refreshed for the current app-aware Timeline flow.
 
 ### Fixed
-- Live Text analysis cancels stale work when frames change quickly, preventing outdated text overlays
+- Live Text analysis now cancels stale analysis work when frames change quickly, preventing outdated text overlays from racing the visible frame.
+- Content FTS maintenance now uses stable row IDs, delete/update triggers, and a schema-versioned rebuild path.
+- Storage cleanup now deletes related FTS rows, rolls back failed cleanup transactions, and avoids deleting partial frame sets from active video ranges.
+
+### Verification
+- `swift test` in `MementoTimeline`
+- `swift build -c release` in `MementoTimeline`
+- `swift test` in `MementoCapture`
+- `swift build -c release` in `MementoCapture`
+- `git diff --check`
+- Developer ID signed and notarized DMG: `Memento-Native-2.1.0.dmg`
+- DMG SHA-256: `d1ae509c1a6b3affd32d50186523fce1bac6e57c07bc7607380b6b2239c36985`
 
 ## [2.0.6] - 2026-04-24
 
